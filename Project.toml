@@ -1,0 +1,7 @@
+name = "CodonMolecularEvolution"
+uuid = "6511b2a3-0bb8-4def-a118-560a7e125e34"
+authors = ["Ben Murrell <murrellb@gmail.com> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1.9"

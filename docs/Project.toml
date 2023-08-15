@@ -1,0 +1,3 @@
+[deps]
+CodonMolecularEvolution = "6511b2a3-0bb8-4def-a118-560a7e125e34"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
