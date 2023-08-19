@@ -1,4 +1,4 @@
-using MolecularEvolution, CodonMolecularEvolution
+using MolecularEvolution, FASTX, CodonMolecularEvolution
 using Test
 
 @testset "CodonMolecularEvolution.jl" begin
