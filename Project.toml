@@ -3,5 +3,18 @@ uuid = "6511b2a3-0bb8-4def-a118-560a7e125e34"
 authors = ["Ben Murrell <murrellb@gmail.com> and contributors"]
 version = "0.1.0"
 
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Compose = "a81c6b42-2e10-5240-aca2-a61377ecd94b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+FASTX = "c2308a5c-f048-11e8-3e8a-31650f418d12"
+Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
+MolecularEvolution = "9f975960-e239-4209-8aa0-3d3ad5a82892"
+NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
+ParameterHandling = "2412ca09-6db7-441c-8e3a-88d5709968c5"
+PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
 [compat]
 julia = "1.9"
