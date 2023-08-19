@@ -1,2 +1,3 @@
 [deps]
+MolecularEvolution = "9f975960-e239-4209-8aa0-3d3ad5a82892"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
