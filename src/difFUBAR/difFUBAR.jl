@@ -15,7 +15,7 @@
 function model_ind(str::String, tags::Vector{String})
     ind = length(tags)+1
     for (i,t) in enumerate(tags)
-        if occursin(t,str) #Why isn't this strict equality??
+        if occursin(t,str)
             ind = i
         end
     end
@@ -400,7 +400,7 @@ function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thr
                                                                                 verbosity = verbosity, foreground_grid = 6, background_grid = 4)
     alloc_grid,theta = difFUBAR_sample(con_lik_matrix, iters, verbosity = verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity = verbosity, exports = exports)
-    
+
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
 end
