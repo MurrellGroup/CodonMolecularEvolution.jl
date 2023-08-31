@@ -69,7 +69,6 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
             shadow=true, fancybox=true, bbox_to_anchor=(0.5, 1.01)
         )
     end
-    #tight_layout!()
 end
 
 
@@ -308,37 +307,19 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
         #Three plotting examples.
         #Plot the alphas for each flagged site
 
-        #figure(figsize=(3, 1 + length(sites[sites_to_plot]) / 2))
-        #        bar!(size=(400, 100))
-        #bar!(size=(3, 100 + length(sites[sites_to_plot]) / 2))
         FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.75, grd, tag="α", color="green", x_label="α")
-        #plot!(size=(400, 1000), margins=1Plots.cm)
-        println(length(sites[sites_to_plot]))
-        print("\n\n\n")
-        #plot!(size=(400, 1000), margins=1Plots.cm)
         plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, grid=false)
-
-        #bar!(size=(, 1 + length(sites[sites_to_plot]) / 2))
-        #bar!(size=(400, 1600))
         savefig(analysis_name * "_violin_alpha.pdf")
-
         Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
 
-        #close()
-
         #Plot the G1 and G2 omegas
-        #figure(figsize=(3, 1 + length(sites[sites_to_plot]) / 2))
-        #        plot!(size=(4, 1 + length(sites[sites_to_plot]) / 2))
         FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot], grd, tag="ω1", color=tag_colors[1])
         FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot], grd, tag="ω2", color=tag_colors[2], x_label="ω")
-        #plot!(size=(400, 1000), margins=1Plots.cm)
         plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, grid=false)
-
         savefig(analysis_name * "_violin_omegas.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing
-        #close()
+
         #Plot all three parameters, using the v_offset to separate the alphas from the omegas
-        #figure(figsize=(3, 4 + length(sites[sites_to_plot]) / 2))
         FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot] .* 0.5, grd, tag="ω1", color=tag_colors[1], v_offset=-0.1)
         FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot] .* 0.5, grd, tag="ω2", color=tag_colors[2], v_offset=-0.1)
         FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.5, grd, tag="α", color="green", v_offset=0.1)
@@ -347,9 +328,7 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
         savefig(analysis_name * "_violin_all_params.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing
 
-        #close()
         #Coerce the violin plot function to also viz the "detection" posteriors.
-        #figure(figsize=(1.5, 1 + length(sites[sites_to_plot]) / 2))
         floored_detec = [clamp.((d .- 0.95) .* 20, 0.0, 1.0) for d in detections[sites_to_plot]]
         FUBAR_violin_plot(sites[sites_to_plot], [[f[1], 0.0, 0.0, 0.0] for f in floored_detec] .* 0.5,
             ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω1>ω2)", color=tag_colors[1],
@@ -363,20 +342,15 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
         FUBAR_violin_plot(sites[sites_to_plot], [[0.0, 0.0, 0.0, f[4]] for f in floored_detec] .* 0.5,
             ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω2>1)", color=tag_colors[2],
             vertical_ind=nothing, legend_ncol=2, x_label="", plot_legend=false)
-        #        plot!(size=(400, 1000), margins=1Plots.cm, legend=false)
         plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, legend=false, grid=false)
 
         savefig(analysis_name * "_detections.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing
 
-        #        close()
-
-
     end
 
     if exports
         #A plot of the omega means for all sites.
-        #figure(figsize=(20, 3))
         omega1_means = [p[2] for p in param_means]
         omega2_means = [p[3] for p in param_means]
         for i in 1:length(omega1_means)
@@ -421,7 +395,6 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
             legend=:outertop,
             legendcolumns=5
         )
-        # tight_layout() now a function of julia Plots package
         plot!(size=(length(sites), 300), margins=1Plots.cm, grid=false, ylim=(0, 10))
         savefig(analysis_name * "_site_omega_means.pdf")
 
