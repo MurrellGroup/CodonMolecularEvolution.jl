@@ -71,6 +71,53 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
     end
 end
 
+function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
+    #A plot of the omega means for all sites.
+    omega1_means = [p[2] for p in param_means]
+    omega2_means = [p[3] for p in param_means]
+    for i in 1:length(omega1_means)
+        tc = "black"
+        if omega1_means[i] > omega2_means[i]
+            tc = tag_colors[1]
+        else
+            tc = tag_colors[2]
+        end
+
+        diff_mul = 1.0
+        if !(maximum(detections[i][1:2]) > pos_thresh)
+            diff_mul = 0.1
+        end
+
+        pos1_mul = 1.0
+        if !(detections[i][3] > pos_thresh)
+            pos1_mul = 0.15
+        end
+
+        pos2_mul = 1.0
+        if !(detections[i][4] > pos_thresh)
+            pos2_mul = 0.15
+        end
+        plot!([i, i], [omega1_means[i], omega2_means[i]], color=tc, alpha=0.75 * diff_mul, linewidth=2, xlim=(-4, num_sites + 5), label="")
+        scatter!([i], [omega1_means[i]], color=tag_colors[1], alpha=0.75 * pos1_mul, ms=2.5, label="", markerstrokecolor=:auto)
+        scatter!([i], [omega2_means[i]], color=tag_colors[2], alpha=0.75 * pos2_mul, ms=2.5, label="", markerstrokecolor=:auto)
+    end
+
+
+    scatter!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>1", ms=2.5)
+    scatter!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>1", ms=2.5)
+    plot!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>ω2", linewidth=2)
+    plot!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>ω1", linewidth=2)
+    plot!([-2, num_sites + 3], [1.0, 1.0], color="grey", alpha=0.5, label="ω=1", linestyle=:dash, linewidth=2)
+    xlabel!("Codon Sites")
+    ylabel!("ω")
+    #        yscale!(:symlog) # Plots does not support symlog, no scale works better than :log10 scsale in plot!
+    yticks!([0.01, 0.5, 1.0, 1.6, 2.5, 5.0, 10.0], ["0.01", "0.5", "1.0", "1.6", "2.5", "5.0", "10.0"])
+    plot!(
+        legend=:outertop,
+        legendcolumns=5,
+    )
+
+end
 
 """
 
@@ -350,51 +397,7 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
     end
 
     if exports
-        #A plot of the omega means for all sites.
-        omega1_means = [p[2] for p in param_means]
-        omega2_means = [p[3] for p in param_means]
-        for i in 1:length(omega1_means)
-            tc = "black"
-            if omega1_means[i] > omega2_means[i]
-                tc = tag_colors[1]
-            else
-                tc = tag_colors[2]
-            end
-
-            diff_mul = 1.0
-            if !(maximum(detections[i][1:2]) > pos_thresh)
-                diff_mul = 0.1
-            end
-
-            pos1_mul = 1.0
-            if !(detections[i][3] > pos_thresh)
-                pos1_mul = 0.15
-            end
-
-            pos2_mul = 1.0
-            if !(detections[i][4] > pos_thresh)
-                pos2_mul = 0.15
-            end
-
-            plot!([i, i], [omega1_means[i], omega2_means[i]], color=tc, alpha=0.75 * diff_mul, linewidth=2, xlim=(-4, num_sites + 5), label="")
-            scatter!([i], [omega1_means[i]], color=tag_colors[1], alpha=0.75 * pos1_mul, ms=2.5, label="")
-            scatter!([i], [omega2_means[i]], color=tag_colors[2], alpha=0.75 * pos2_mul, ms=2.5, label="")
-        end
-
-
-        scatter!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>1", ms=2.5)
-        scatter!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>1", ms=2.5)
-        plot!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>ω2", linewidth=2)
-        plot!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>ω1", linewidth=2)
-        plot!([-2, num_sites + 3], [1.0, 1.0], color="grey", alpha=0.5, label="ω=1", linestyle=:dash, linewidth=2)
-        xlabel!("Codon Sites")
-        ylabel!("ω")
-        #        yscale!(:symlog) # Plots does not support symlog, no scale works better than :log10 scsale in plot!
-        yticks!([0.01, 0.5, 1.0, 1.6, 2.5, 5.0, 10.0], ["0.01", "0.5", "1.0", "1.6", "2.5", "5.0", "10.0"])
-        plot!(
-            legend=:outertop,
-            legendcolumns=5
-        )
+        FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
         plot!(size=(length(sites), 300), margins=1Plots.cm, grid=false, ylim=(0, 10))
         savefig(analysis_name * "_site_omega_means.pdf")
 
