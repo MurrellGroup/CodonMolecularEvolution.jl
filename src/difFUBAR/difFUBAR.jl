@@ -75,6 +75,15 @@ function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_s
     #A plot of the omega means for all sites.
     omega1_means = [p[2] for p in param_means]
     omega2_means = [p[3] for p in param_means]
+    # Create the plot with a logarithmic y-scale
+    #y_ticks = [0.01, 0.5, 1.0, 1.6, 2.5, 5.0, 10.0]
+    #plot([0, 1, 2, 3, 4, 5, 6], y_ticks)
+
+    #yticks!(y_ticks, string.(y_ticks))
+
+    omega1_means = log10.(omega1_means .+ 1)
+    omega2_means = log10.(omega2_means .+ 1)
+
     for i in 1:length(omega1_means)
         tc = "black"
         if omega1_means[i] > omega2_means[i]
@@ -97,9 +106,9 @@ function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_s
         if !(detections[i][4] > pos_thresh)
             pos2_mul = 0.15
         end
-        plot!([i, i], [omega1_means[i], omega2_means[i]], color=tc, alpha=0.75 * diff_mul, linewidth=2, xlim=(-4, num_sites + 5), label="")
-        scatter!([i], [omega1_means[i]], color=tag_colors[1], alpha=0.75 * pos1_mul, ms=2.5, label="", markerstrokecolor=:auto)
-        scatter!([i], [omega2_means[i]], color=tag_colors[2], alpha=0.75 * pos2_mul, ms=2.5, label="", markerstrokecolor=:auto)
+        plot!([i, i], [omega1_means[i], omega2_means[i]], color=tc, alpha=0.75 * diff_mul, linewidth=2, xlim=(-4, num_sites + 5), label="", yscale=:log10)
+        scatter!([i], [omega1_means[i]], color=tag_colors[1], alpha=0.75 * pos1_mul, ms=2.5, label="", markerstrokecolor=:auto, yscale=:log10)
+        scatter!([i], [omega2_means[i]], color=tag_colors[2], alpha=0.75 * pos2_mul, ms=2.5, label="", markerstrokecolor=:auto, yscale=:log10)
     end
 
 
@@ -107,11 +116,12 @@ function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_s
     scatter!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>1", ms=2.5)
     plot!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>ω2", linewidth=2)
     plot!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>ω1", linewidth=2)
-    plot!([-2, num_sites + 3], [1.0, 1.0], color="grey", alpha=0.5, label="ω=1", linestyle=:dash, linewidth=2)
+    #plot!([-2, num_sites + 3], [1.0, 1.0], color="grey", alpha=0.5, label="ω=1", linestyle=:dash, linewidth=2)
+    plot!([-2, num_sites + 3], [log10(1.0 + 1), log10(1.0 + 1)], color="grey", alpha=0.5, label="ω=1", linestyle=:dash, linewidth=2)
     xlabel!("Codon Sites")
     ylabel!("ω")
     #        yscale!(:symlog) # Plots does not support symlog, no scale works better than :log10 scsale in plot!
-    yticks!([0.01, 0.5, 1.0, 1.6, 2.5, 5.0, 10.0], ["0.01", "0.5", "1.0", "1.6", "2.5", "5.0", "10.0"])
+    yticks!(log10.([0.01, 0.5, 1.0, 1.6, 2.5, 5.0, 10.0] .+ 1), ["0.01", "0.5", "1.0", "1.6", "2.5", "5.0", "10.0"])
     plot!(
         legend=:outertop,
         legendcolumns=5,
@@ -397,8 +407,11 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
     end
 
     if exports
+        Plots.CURRENT_PLOT.nullableplot = nothing
         FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
-        plot!(size=(length(sites), 300), margins=1Plots.cm, grid=false, ylim=(0, 10))
+        plot!(size=(length(sites), 300), margins=1Plots.cm, grid=false, ylim=(0, 1.043))
+        #yaxis!("ω", :log10)
+        #yticks!([0.01, 0.5, 1.0, 1.6, 2.5, 5.0, 10.0], ["0.01", "0.5", "1.0", "1.6", "2.5", "5.0", "10.0"])
         savefig(analysis_name * "_site_omega_means.pdf")
 
     end
