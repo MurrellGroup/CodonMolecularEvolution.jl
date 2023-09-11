@@ -369,15 +369,27 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
         #Three plotting examples.
         #Plot the alphas for each flagged site
 
+        # make some restraints for plot 
+        if length(sites_to_plot) < 20
+            lmargin = 10
+        elseif length(sites_to_plot) < 80
+            lmargin = length(sites_to_plot)
+        else
+            lmargin = length(sites_to_plot) / 1.6
+        end
+
+
         FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.75, grd, tag="α", color="green", x_label="α")
-        plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, grid=false)
+        plot!(size=(400, 70 * length(sites[sites_to_plot])), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+
         savefig(analysis_name * "_violin_alpha.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
 
         #Plot the G1 and G2 omegas
         FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot], grd, tag="ω1", color=tag_colors[1])
         FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot], grd, tag="ω2", color=tag_colors[2], x_label="ω")
-        plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, grid=false)
+        plot!(size=(400, 70 * length(sites[sites_to_plot])), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+
         savefig(analysis_name * "_violin_omegas.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing
 
@@ -385,13 +397,14 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
         FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot] .* 0.5, grd, tag="ω1", color=tag_colors[1], v_offset=-0.1)
         FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot] .* 0.5, grd, tag="ω2", color=tag_colors[2], v_offset=-0.1)
         FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.5, grd, tag="α", color="green", v_offset=0.1)
-        plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, grid=false)
+        plot!(size=(400, 70 * length(sites[sites_to_plot])), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
 
         savefig(analysis_name * "_violin_all_params.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing
 
         #Coerce the violin plot function to also viz the "detection" posteriors.
         floored_detec = [clamp.((d .- 0.95) .* 20, 0.0, 1.0) for d in detections[sites_to_plot]]
+        println(sites_to_plot)
         FUBAR_violin_plot(sites[sites_to_plot], [[f[1], 0.0, 0.0, 0.0] for f in floored_detec] .* 0.5,
             ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω1>ω2)", color=tag_colors[1],
             vertical_ind=nothing, plot_legend=false)
@@ -404,7 +417,17 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
         FUBAR_violin_plot(sites[sites_to_plot], [[0.0, 0.0, 0.0, f[4]] for f in floored_detec] .* 0.5,
             ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω2>1)", color=tag_colors[2],
             vertical_ind=nothing, legend_ncol=2, x_label="", plot_legend=false)
-        plot!(size=(400, 70 * length(sites[sites_to_plot])), margins=1Plots.cm, legend=false, grid=false)
+
+        if length(sites[sites_to_plot]) < 5
+            ysize = 500
+        else
+            ysize = 70 * length(sites[sites_to_plot])  #too tight for 0.95
+        end
+
+        plot!(size=(800, ysize), margins=1Plots.cm, legend=false, grid=false,
+            ytickfont=18, bottom_margin=30mm, left_margin=(lmargin)mm,
+            xtickfont=18)
+        println(length(sites_to_plot))
 
         savefig(analysis_name * "_detections.pdf")
         Plots.CURRENT_PLOT.nullableplot = nothing
