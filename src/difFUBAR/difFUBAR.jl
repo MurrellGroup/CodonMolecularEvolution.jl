@@ -207,6 +207,164 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, fore
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
+function difFUBAR_grid_maxi(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags,omega_vec,alpha,nuc_mat,F3x4, code)
+        models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
+        return n::FelNode -> [models[model_ind(n.name,tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb))/num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x-0.05
+    trinv(x) =  log10(x+0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr); 
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    tensor_dims = 1+num_groups+is_background;
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v,[e]) for v in vec_of_vec for e in elems]
+    end
+    
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec,omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec,background_omega_grid)
+    end
+    codon_param_vec;
+    
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l,num_sites);
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+    pure_subclades = FelNode[]
+    # Traverses the tree recursively with a dfs whilst pushing roots of pure subclades to list^
+    function find_pure_subclades(node)
+        # Get the index of the node's tag
+        tag_ind_of_node = model_ind(node.name, tags)
+
+        # If the node is a leaf, it's pure
+        if length(node.children) == 0
+            return true, tag_ind_of_node
+        end
+
+        children_is_pure_and_tag = []
+        pure_children = FelNode[]
+
+        for child in node.children
+            child_is_pure, tag_ind = find_pure_subclades(child)
+            if child_is_pure
+                push!(pure_children, child)
+            end
+            push!(children_is_pure_and_tag, (child_is_pure, tag_ind))
+        end
+
+        # Get the index of the node's first child's tag
+        tag_ind_of_first_child = children_is_pure_and_tag[1][2]
+
+        # This is the case where the subclade starting at node is pure
+        if all(x == (true, tag_ind_of_first_child) for x in children_is_pure_and_tag)
+            if tag_ind_of_node != tag_ind_of_first_child
+                # The purity is broken at this node
+                push!(pure_subclades, node)
+                return false, tag_ind_of_node
+            end
+            # The purity is not broken at this node
+            return true, tag_ind_of_node
+        end
+
+        # This is the case where some child has mixed tags or the children are pure with regards to different tags
+        for pure_child in pure_children
+            if length(pure_child.children) == 0
+                # We don't want to push leaves into pure_subclades
+                continue
+            end
+            push!(pure_subclades, pure_child)
+        end
+        return false, tag_ind_of_node
+    end
+
+    find_pure_subclades(tree)
+    
+    cached_messages = Dict()
+    cached_tag_inds = Dict()
+    for x in pure_subclades
+        cached_messages[x] = Dict()
+        cached_tag_inds[x] = model_ind(x.children[1].name, tags)
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[cached_tag_inds[x]]
+
+            if haskey(cached_messages[x], (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs,code)
+            felsenstein!(x, models)
+            cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
+    end
+
+
+    for (row_ind,cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs, code)
+
+        for x in pure_subclades
+            x.message = cached_messages[x][(alpha, omegas[cached_tag_inds[x]])]
+        end
+
+        felsenstein!(tree,tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        combine!.(tree.message,tree.parent_message)
+
+        log_con_lik_matrix[row_ind,:] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind,500)==1
+            print(round(100*row_ind/length(codon_param_vec)),"% ")
+            flush(stdout)
+        end
+    end
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix));
+    site_scalers = maximum(log_con_lik_matrix, dims = 1);
+    for i in 1:num_sites
+        con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
 function difFUBAR_sample(con_lik_matrix, iters; verbosity = 1)
     verbosity > 0 &&  println("Step 4: Running Gibbs sampler to infer site categories.")
     alloc_grid,theta = LDA_gibbs_track_allocation_vec(con_lik_matrix,0.1, iters = iters)
