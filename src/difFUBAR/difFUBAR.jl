@@ -12,6 +12,9 @@
 
 
 #Here, untagged comes after the tags
+
+# added for parallellizing difFUBAR_grid
+
 function model_ind(str::String, tags::Vector{String})
     ind = length(tags) + 1
     for (i, t) in enumerate(tags)
@@ -226,6 +229,7 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foregr
 
     num_groups = length(tags)
     is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    #is_background = false
     tensor_dims = 1 + num_groups + is_background
 
     function add_to_each_element(vec_of_vec, elems)
@@ -250,10 +254,191 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foregr
 
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+
     for (row_ind, cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
         tagged_models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+
+        #print("felsenstein")
+        felsenstein!(tree, tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        #print("combine")
+        combine!.(tree.message, tree.parent_message)
+        #println(length(tree.message[1]))
+        #print("log_con_like_matrix")
+        log_con_lik_matrix[row_ind, :] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind, 500) == 1
+            print(round(100 * row_ind / length(codon_param_vec)), "% ")
+            flush(stdout)
+        end
+    end
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix))
+    site_scalers = maximum(log_con_lik_matrix, dims=1)
+    for i in 1:num_sites
+        con_lik_matrix[:, i] .= exp.(log_con_lik_matrix[:, i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+#foreground_grid and background_grid control the number of categories below 1.0
+function difFUBAR_grid_pruned_1(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    #is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    is_background = false
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+    pure_subclades = FelNode[]
+    # Traverses the tree recursively with a dfs whilst pushing roots of pure subclades to list^
+    function find_pure_subclades(node)
+        # Get the index of the node's tag
+        tag_ind_of_node = model_ind(node.name, tags)
+
+        # If the node is a leaf, it's pure
+        if length(node.children) == 0
+            return true, tag_ind_of_node
+        end
+
+        children_is_pure_and_tag = []
+        pure_children = FelNode[]
+
+        for child in node.children
+            child_is_pure, tag_ind = find_pure_subclades(child)
+            if child_is_pure
+                push!(pure_children, child)
+            end
+            push!(children_is_pure_and_tag, (child_is_pure, tag_ind))
+        end
+
+        # Get the index of the node's first child's tag
+        tag_ind_of_first_child = children_is_pure_and_tag[1][2]
+
+        # This is the case where the subclade starting at node is pure
+        if all(x == (true, tag_ind_of_first_child) for x in children_is_pure_and_tag)
+            if tag_ind_of_node != tag_ind_of_first_child
+                # The purity is broken at this node
+                push!(pure_subclades, node)
+                return false, tag_ind_of_node
+            end
+            # The purity is not broken at this node
+            return true, tag_ind_of_node
+        end
+
+        # This is the case where some child has mixed tags or the children are pure with regards to different tags
+        for pure_child in pure_children
+            if length(pure_child.children) == 0
+                # We don't want to push leaves into pure_subclades
+                continue
+            end
+            push!(pure_subclades, pure_child)
+        end
+        return false, tag_ind_of_node
+    end
+
+    time_elapsed = @elapsed find_pure_subclades(tree)
+    println("Max prune " * string(time_elapsed))
+
+    cached_messages = Dict()
+    cached_tag_inds = Dict()
+    for x in pure_subclades
+        cached_messages[x] = Dict()
+        cached_tag_inds[x] = model_ind(x.children[1].name, tags)
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[cached_tag_inds[x]]
+
+            if haskey(cached_messages[x], (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+            felsenstein!(x, models)
+            cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
+    end
+
+    for (row_ind, cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+
+        # added for subtree prune 
+        for x in pure_subclades
+            x.message = cached_messages[x][(alpha, omegas[cached_tag_inds[x]])]
+        end
 
         felsenstein!(tree, tagged_models)
         #This combine!() is needed because the current site_LLs function applies to a partition
@@ -267,6 +452,7 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foregr
             flush(stdout)
         end
     end
+
     verbosity > 0 && println()
 
     con_lik_matrix = zeros(size(log_con_lik_matrix))
@@ -277,6 +463,869 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foregr
 
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
+
+
+
+#foreground_grid and background_grid control the number of categories below 1.0
+function difFUBAR_grid_pruned_2(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+    # getnodelist and get a specific node from nodelist
+    #function get_node_by_name(query_node::String, tree::FelNode)
+    #    # This is a useful function that maybe should be in AbstractTreeNode.jl
+    #    for node in getnodelist(tree)
+    #        if node.name == query_node
+    #            return node
+    #        end
+    #    end
+    #end
+
+    function check_purity_from_node_and_forward_in_time(tree)
+        # collect all nodes under and see if they are the same group
+        # if return true that means everything under the tree is pure (the tree node can be differnt though)
+        node_groups = []
+        for node in getnodelist(tree)
+            if tree.name != node.name # we only check nodes under the input tree or subtree
+                push!(node_groups, model_ind(node.name, tags))
+            end
+        end
+        if length(unique(node_groups)) == 1
+            return true
+        else
+            return false
+        end
+    end
+
+    pure_clades = []
+    function traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+        for child in tree.children
+            if check_purity_from_node_and_forward_in_time(child)
+                #print(child.name)
+                #println(" PURE")
+                # add this node, as everything under this node is pure
+                push!(pure_clades, child)
+            else
+                #print(child.name)
+                #println(" not pure") # keep recursion to se if we go forward in time if we can find pure clades
+                traverse_tree_to_check_for_pure_clades(pure_clades, child)
+            end
+        end
+        return pure_clades
+    end
+
+    time_elapsed = @elapsed subtree_tops = traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+    println("Patrick prune " * string(time_elapsed))
+
+    cached_values = Dict()
+    for x in subtree_tops
+        #x = get_node_by_name(x, tree)
+        cached_values[x] = Dict()
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[model_ind(x.name, tags)] #here we need to change to child omega
+
+            if haskey(cached_values[x], (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+            felsenstein!(x, models)
+            cached_values[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
+    end
+    #println("DEBUG")
+    #println(pure_clades)
+
+    for (row_ind, cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+
+        # added for subtree prune 
+        for x in pure_clades
+            #x = get_node_by_name(x, tree)
+            x.message = cached_values[x][(alpha, omegas[model_ind(x.name, tags)])]
+        end
+
+        felsenstein!(tree, tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        combine!.(tree.message, tree.parent_message)
+
+        log_con_lik_matrix[row_ind, :] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind, 500) == 1
+            print(round(100 * row_ind / length(codon_param_vec)), "% ")
+            flush(stdout)
+        end
+    end
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix))
+    site_scalers = maximum(log_con_lik_matrix, dims=1)
+    for i in 1:num_sites
+        con_lik_matrix[:, i] .= exp.(log_con_lik_matrix[:, i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+function difFUBAR_grid_pruned_3(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    #is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    is_background = false
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+    # getnodelist and get a specific node from nodelist
+    #function get_node_by_name(query_node::String, tree::FelNode)
+    #    # This is a useful function that maybe should be in AbstractTreeNode.jl
+    #    for node in getnodelist(tree)
+    #        if node.name == query_node
+    #            return node
+    #        end
+    #    end
+    #end
+
+    function check_purity_from_node_and_forward_in_time(tree)
+        # collect all nodes under and see if they are the same group
+        # if return true that means everything under the tree is pure (the tree node can be differnt though)
+        node_groups = []
+        for node in getnodelist(tree)
+            if tree.name != node.name # we only check nodes under the input tree or subtree
+                push!(node_groups, model_ind(node.name, tags))
+            end
+        end
+        if length(unique(node_groups)) == 1
+            return true
+        else
+            return false
+        end
+    end
+
+    pure_clades = []
+    function traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+        for child in tree.children
+            if check_purity_from_node_and_forward_in_time(child)
+                #print(child.name)
+                #println(" PURE")
+                # add this node, as everything under this node is pure
+                push!(pure_clades, child)
+            else
+                #print(child.name)
+                #println(" not pure") # keep recursion to se if we go forward in time if we can find pure clades
+                traverse_tree_to_check_for_pure_clades(pure_clades, child)
+            end
+        end
+        return pure_clades
+    end
+
+    time_elapsed = @elapsed subtree_tops = traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+    println("Patrick prune " * string(time_elapsed))
+
+    cached_messages = Dict()
+    cached_tag_inds = Dict()
+    for x in subtree_tops
+        cached_messages[x] = Dict()
+        cached_tag_inds[x] = model_ind(x.children[1].name, tags)
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[cached_tag_inds[x]]
+
+            if haskey(cached_messages[x], (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+            felsenstein!(x, models)
+            cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
+    end
+
+    for (row_ind, cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+
+        # added for subtree prune 
+        for x in subtree_tops
+            x.message = cached_messages[x][(alpha, omegas[cached_tag_inds[x]])]
+        end
+
+        felsenstein!(tree, tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        combine!.(tree.message, tree.parent_message)
+
+        log_con_lik_matrix[row_ind, :] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind, 500) == 1
+            print(round(100 * row_ind / length(codon_param_vec)), "% ")
+            flush(stdout)
+        end
+    end
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix))
+    site_scalers = maximum(log_con_lik_matrix, dims=1)
+    for i in 1:num_sites
+        con_lik_matrix[:, i] .= exp.(log_con_lik_matrix[:, i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+
+#foreground_grid and background_grid control the number of categories below 1.0
+function difFUBAR_grid_pruned_4(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    #is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    is_background = false
+
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+    # getnodelist and get a specific node from nodelist
+    #function get_node_by_name(query_node::String, tree::FelNode)
+    #    # This is a useful function that maybe should be in AbstractTreeNode.jl
+    #    for node in getnodelist(tree)
+    #        if node.name == query_node
+    #            return node
+    #        end
+    #    end
+    #end
+
+    function check_purity_from_node_and_forward_in_time(tree)
+        # collect all nodes under and see if they are the same group
+        # if return true that means everything under the tree is pure (the tree node can be differnt though)
+        node_groups = []
+        for node in getnodelist(tree)
+            if tree.name != node.name # we only check nodes under the input tree or subtree
+                push!(node_groups, model_ind(node.name, tags))
+            end
+        end
+        if length(unique(node_groups)) == 1
+            return true
+        else
+            return false
+        end
+    end
+
+    pure_clades = []
+    function traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+        for child in tree.children
+            if check_purity_from_node_and_forward_in_time(child)
+                #print(child.name)
+                #println(" PURE")
+                # add this node, as everything under this node is pure
+                push!(pure_clades, child)
+            else
+                #print(child.name)
+                #println(" not pure") # keep recursion to se if we go forward in time if we can find pure clades
+                traverse_tree_to_check_for_pure_clades(pure_clades, child)
+            end
+        end
+        return pure_clades
+    end
+
+    time_elapsed = @elapsed subtree_tops = traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+    println("Patrick prune " * string(time_elapsed))
+
+    cached_messages = Dict()
+    for x in subtree_tops
+        cached_messages[x] = Dict()
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[model_ind(x.children[1].name, tags)] # children[1].name is the same as children[2].name
+
+            if haskey(cached_messages[x], (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+            felsenstein!(x, models)
+            cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+    end
+
+    for (row_ind, cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+
+        # added for subtree prune
+        pure_children = []
+        for x in subtree_tops
+            push!(pure_children, x.children)
+            x.message = cached_messages[x][(alpha, omegas[model_ind(x.children[1].name, tags)])]
+            x.children = FelNode[]
+        end
+
+        felsenstein!(tree, tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        combine!.(tree.message, tree.parent_message)
+
+        log_con_lik_matrix[row_ind, :] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind, 500) == 1
+            print(round(100 * row_ind / length(codon_param_vec)), "% ")
+            flush(stdout)
+        end
+
+        for (i, x) in enumerate(subtree_tops)
+            x.children = pure_children[i]
+        end
+    end
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix))
+    site_scalers = maximum(log_con_lik_matrix, dims=1)
+    for i in 1:num_sites
+        con_lik_matrix[:, i] .= exp.(log_con_lik_matrix[:, i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+function difFUBAR_grid_final(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    #is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
+
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+    function check_purity_from_node_and_forward_in_time(tree)
+        # collect all nodes under and see if they are the same group
+        # if return true that means everything under the tree is pure (the tree node can be differnt though)
+        node_groups = []
+        for node in getnodelist(tree)
+            if tree.name != node.name # we only check nodes under the input tree or subtree
+                push!(node_groups, model_ind(node.name, tags))
+            end
+        end
+        if length(unique(node_groups)) == 1
+            return true
+        else
+            return false
+        end
+    end
+
+    pure_clades = []
+    function traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+        for child in tree.children
+            if check_purity_from_node_and_forward_in_time(child)
+                # add this node, as everything under this node is pure
+                push!(pure_clades, child)
+            else
+                traverse_tree_to_check_for_pure_clades(pure_clades, child)
+            end
+        end
+        return pure_clades
+    end
+
+    time_elapsed = @elapsed subtree_tops = traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+    println("Patrick prune " * string(time_elapsed))
+
+    cached_messages = Dict()
+    cached_tag_inds = Dict()
+    for x in subtree_tops
+        cached_messages[x] = Dict()
+        cached_tag_inds[x] = model_ind(x.children[1].name, tags)
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[cached_tag_inds[x]]
+
+            if haskey(cached_messages[x], (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+            felsenstein!(x, models)
+            cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
+    end
+
+    for (row_ind, cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(tags, omegas, alpha, GTRmat, F3x4_freqs, code)
+
+        # added for subtree prune 
+        for x in subtree_tops
+            x.message = cached_messages[x][(alpha, omegas[cached_tag_inds[x]])]
+        end
+
+        felsenstein!(tree, tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        combine!.(tree.message, tree.parent_message)
+
+        log_con_lik_matrix[row_ind, :] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind, 500) == 1
+            print(round(100 * row_ind / length(codon_param_vec)), "% ")
+            flush(stdout)
+        end
+    end
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix))
+    site_scalers = maximum(log_con_lik_matrix, dims=1)
+    for i in 1:num_sites
+        con_lik_matrix[:, i] .= exp.(log_con_lik_matrix[:, i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+
+function difFUBAR_grid_pruned_3_return_subtree_tops(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+    # getnodelist and get a specific node from nodelist
+    #function get_node_by_name(query_node::String, tree::FelNode)
+    #    # This is a useful function that maybe should be in AbstractTreeNode.jl
+    #    for node in getnodelist(tree)
+    #        if node.name == query_node
+    #            return node
+    #        end
+    #    end
+    #end
+
+    function check_purity_from_node_and_forward_in_time(tree)
+        # collect all nodes under and see if they are the same group
+        # if return true that means everything under the tree is pure (the tree node can be differnt though)
+        node_groups = []
+        for node in getnodelist(tree)
+            if tree.name != node.name # we only check nodes under the input tree or subtree
+                push!(node_groups, model_ind(node.name, tags))
+            end
+        end
+        if length(unique(node_groups)) == 1
+            return true
+        else
+            return false
+        end
+    end
+
+    pure_clades = []
+    function traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+        for child in tree.children
+            if check_purity_from_node_and_forward_in_time(child)
+                #print(child.name)
+                #println(" PURE")
+                # add this node, as everything under this node is pure
+                push!(pure_clades, child)
+            else
+                #print(child.name)
+                #println(" not pure") # keep recursion to se if we go forward in time if we can find pure clades
+                traverse_tree_to_check_for_pure_clades(pure_clades, child)
+            end
+        end
+        return pure_clades
+    end
+
+    time_elapsed = @elapsed subtree_tops = traverse_tree_to_check_for_pure_clades(pure_clades, tree)
+    return subtree_tops
+end
+
+#foreground_grid and background_grid control the number of categories below 1.0
+function difFUBAR_grid_pruned_1_return_subtree_tops(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4)
+
+    cached_model = MG94_cacher(code)
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(tags, omega_vec, alpha, nuc_mat, F3x4, code)
+        models = [cached_model(alpha, alpha * o, nuc_mat, F3x4, genetic_code=code) for o in omega_vec]
+        return n::FelNode -> [models[model_ind(n.name, tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb)) / num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x - 0.05
+    trinv(x) = log10(x + 0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree)]) > num_groups
+    tensor_dims = 1 + num_groups + is_background
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v, [e]) for v in vec_of_vec for e in elems]
+    end
+
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec, omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec, background_omega_grid)
+    end
+    codon_param_vec
+
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l, num_sites)
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+
+    # modify the tree 
+
+    # compute recursion G1
+    # compute recursion G2
+
+    # How does the omega influence the propagation?
+
+    pure_subclades = FelNode[]
+    # Traverses the tree recursively with a dfs whilst pushing roots of pure subclades to list^
+    function find_pure_subclades(node)
+        # Get the index of the node's tag
+        tag_ind_of_node = model_ind(node.name, tags)
+
+        # If the node is a leaf, it's pure
+        if length(node.children) == 0
+            return true, tag_ind_of_node
+        end
+
+        children_is_pure_and_tag = []
+        pure_children = FelNode[]
+
+        for child in node.children
+            child_is_pure, tag_ind = find_pure_subclades(child)
+            if child_is_pure
+                push!(pure_children, child)
+            end
+            push!(children_is_pure_and_tag, (child_is_pure, tag_ind))
+        end
+
+        # Get the index of the node's first child's tag
+        tag_ind_of_first_child = children_is_pure_and_tag[1][2]
+
+        # This is the case where the subclade starting at node is pure
+        if all(x == (true, tag_ind_of_first_child) for x in children_is_pure_and_tag)
+            if tag_ind_of_node != tag_ind_of_first_child
+                # The purity is broken at this node
+                push!(pure_subclades, node)
+                return false, tag_ind_of_node
+            end
+            # The purity is not broken at this node
+            return true, tag_ind_of_node
+        end
+
+        # This is the case where some child has mixed tags or the children are pure with regards to different tags
+        for pure_child in pure_children
+            if length(pure_child.children) == 0
+                # We don't want to push leaves into pure_subclades
+                continue
+            end
+            push!(pure_subclades, pure_child)
+        end
+        return false, tag_ind_of_node
+    end
+
+    time_elapsed = @elapsed find_pure_subclades(tree)
+    return pure_subclades
+end
+
 
 function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
     verbosity > 0 && println("Step 4: Running Gibbs sampler to infer site categories.")
@@ -449,4 +1498,34 @@ function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thr
 end
 export difFUBAR
 
+#Must return enough to re-calculate detections etc
+function difFUBAR_prune_max(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code)
+    analysis_name = outpath
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity)
+    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid_pruned_1(tree, tags, GTRmat, F3x4_freqs, code,
+        verbosity=verbosity, foreground_grid=6, background_grid=4)
+    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    #Return df, (tuple of partial calculations needed to re-run tablulate)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+end
+export difFUBAR_prune_max
+
+
+#Must return enough to re-calculate detections etc
+function difFUBAR_prune_patrick(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code)
+    analysis_name = outpath
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity)
+    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid_pruned_2(tree, tags, GTRmat, F3x4_freqs, code,
+        verbosity=verbosity, foreground_grid=6, background_grid=4)
+    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    #Return df, (tuple of partial calculations needed to re-run tablulate)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+end
+export difFUBAR_prune_patrick
 
