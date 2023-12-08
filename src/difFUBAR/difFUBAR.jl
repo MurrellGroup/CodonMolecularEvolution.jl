@@ -466,32 +466,38 @@ function difFUBAR_grid_maxi_threads(tree, tags, GTRmat, F3x4_freqs, code; verbos
 
     find_pure_subclades(tree)
 
+    function tree_surgery(x)
+        x_messages = Dict()
+        x_tag_ind = model_ind(x.children[1].name, tags)
+        parent = x.parent
+        x.parent = nothing
+        for cp in codon_param_vec
+            alpha = cp[1]
+            omegas = cp[2:end]
+
+            relevant_omega = omegas[x_tag_ind]
+
+            if haskey(x_messages, (alpha, relevant_omega))
+                continue
+            end
+
+            models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs,code)
+            felsenstein!(x, models)
+            x_messages[(alpha, relevant_omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
+        return x_messages, x_tag_ind
+    end
+
     cached_messages = Dict()
     lk = ReentrantLock()
     cached_tag_inds = Dict()
 
     @time begin
         Threads.@threads for x in pure_subclades
-            x_messages = Dict()
-            x_tag_ind = model_ind(x.children[1].name, tags)
-            parent = x.parent
-            x.parent = nothing
-            for cp in codon_param_vec
-                alpha = cp[1]
-                omegas = cp[2:end]
-
-                relevant_omega = omegas[x_tag_ind]
-
-                if haskey(x_messages, (alpha, relevant_omega))
-                    continue
-                end
-
-                models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs,code)
-                felsenstein!(x, models)
-                x_messages[(alpha, relevant_omega)] = deepcopy(x.message)
-            end
-            x.parent = parent
-            x.children = FelNode[]
+            println(Threads.threadid())
+            x_messages, x_tag_ind = tree_surgery(x)
             lock(lk) do 
                 cached_messages[x] = x_messages
                 cached_tag_inds[x] = x_tag_ind
