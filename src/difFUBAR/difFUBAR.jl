@@ -1529,3 +1529,44 @@ function difFUBAR_prune_patrick(seqnames, seqs, treestring, tags, tag_colors, ou
 end
 export difFUBAR_prune_patrick
 
+function difFUBAR_prune_patrick_max(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code)
+    analysis_name = outpath
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity)
+    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid_pruned_3(tree, tags, GTRmat, F3x4_freqs, code,
+        verbosity=verbosity, foreground_grid=6, background_grid=4)
+    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    #Return df, (tuple of partial calculations needed to re-run tablulate)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+end
+export difFUBAR_prune_patrick_max
+
+function difFUBAR_prune_patrick_max_child(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code)
+    analysis_name = outpath
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity)
+    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid_pruned_4(tree, tags, GTRmat, F3x4_freqs, code,
+        verbosity=verbosity, foreground_grid=6, background_grid=4)
+    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    #Return df, (tuple of partial calculations needed to re-run tablulate)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+end
+export difFUBAR_prune_patrick_max_child
+
+function difFUBAR_prune_final(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code)
+    analysis_name = outpath
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity)
+    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid_final(tree, tags, GTRmat, F3x4_freqs, code,
+        verbosity=verbosity, foreground_grid=6, background_grid=4)
+    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    #Return df, (tuple of partial calculations needed to re-run tablulate)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+end
+export difFUBAR_prune_final
