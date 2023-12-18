@@ -1493,6 +1493,10 @@ function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thr
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
 
+    # added for testing
+    con_lik_df = DataFrame(Tables.table(con_lik_matrix))
+    CSV.write(analysis_name * "_con_lik_matrix.csv", con_lik_df, writeheader=false)
+
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
 end
@@ -1507,6 +1511,10 @@ function difFUBAR_prune_max(seqnames, seqs, treestring, tags, tag_colors, outpat
         verbosity=verbosity, foreground_grid=6, background_grid=4)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    # added for testing
+    con_lik_df = DataFrame(Tables.table(con_lik_matrix))
+    CSV.write(analysis_name * "_con_lik_matrix.csv", con_lik_df, writeheader=false)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
@@ -1524,6 +1532,10 @@ function difFUBAR_prune_patrick(seqnames, seqs, treestring, tags, tag_colors, ou
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
 
+    # added for testing
+    con_lik_df = DataFrame(Tables.table(con_lik_matrix))
+    CSV.write(analysis_name * "_con_lik_matrix.csv", con_lik_df, writeheader=false)
+
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
 end
@@ -1537,6 +1549,10 @@ function difFUBAR_prune_patrick_max(seqnames, seqs, treestring, tags, tag_colors
         verbosity=verbosity, foreground_grid=6, background_grid=4)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    # added for testing
+    con_lik_df = DataFrame(Tables.table(con_lik_matrix))
+    CSV.write(analysis_name * "_con_lik_matrix.csv", con_lik_df, writeheader=false)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
@@ -1552,6 +1568,10 @@ function difFUBAR_prune_patrick_max_child(seqnames, seqs, treestring, tags, tag_
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
 
+    # added for testing
+    con_lik_df = DataFrame(Tables.table(con_lik_matrix))
+    CSV.write(analysis_name * "_con_lik_matrix.csv", con_lik_df, writeheader=false)
+
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
 end
@@ -1565,6 +1585,10 @@ function difFUBAR_prune_final(seqnames, seqs, treestring, tags, tag_colors, outp
         verbosity=verbosity, foreground_grid=6, background_grid=4)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+
+    # added for testing
+    con_lik_df = DataFrame(Tables.table(con_lik_matrix))
+    CSV.write(analysis_name * "_con_lik_matrix.csv", con_lik_df, writeheader=false)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
