@@ -289,6 +289,112 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code; verbosity 
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
+function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4)
+
+    cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
+    trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
+
+    #This is the function that assigns models to branches
+    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+    function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
+        models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
+        return n::FelNode -> [models[model_ind(n.name,tags)]]
+    end
+
+    #Defines the grid used for inference.
+    function gridsetup(lb, ub, num_below_one, trin, tr)
+        step = (trin(1.0) - trin(lb))/num_below_one
+        return tr.(trin(lb):step:trin(ub))
+    end
+    tr(x) = 10^x-0.05
+    trinv(x) =  log10(x+0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr); 
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    tensor_dims = 1+num_groups+is_background;
+
+    function add_to_each_element(vec_of_vec, elems)
+        return [vcat(v,[e]) for v in vec_of_vec for e in elems]
+    end
+    
+    codon_param_vec = [[a] for a in alphagrid]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec,omegagrid)
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec,background_omega_grid)
+    end
+    codon_param_vec;
+    
+    num_sites = tree.message[1].sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l,num_sites);
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+    function do_subgrid(tree, cached_model, cvp_chunk)
+        # Note that cvp_chunk is already enumerated
+        for (row_ind,cp) in cvp_chunk
+            alpha = cp[1]
+            omegas = cp[2:end]
+            tagged_models = N_Omegas_model_func(cached_model, tags,omegas,alpha,GTRmat,F3x4_freqs, code)
+
+            felsenstein!(tree,tagged_models)
+            #This combine!() is needed because the current site_LLs function applies to a partition
+            #And after a felsenstein pass, you don't have the eq freqs factored in.
+            #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+            combine!.(tree.message,tree.parent_message)
+            log_con_lik_matrix[row_ind,:] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+            #verbosity > 0 && if mod(row_ind,500)==1
+            #    print(round(100*row_ind/length(codon_param_vec)),"% ")
+            #    flush(stdout)
+            #end
+        end
+    end
+
+    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, length(codon_param_vec) ÷ Threads.nthreads()))
+    tasks = []
+    for (i, cvp_chunk) in enumerate(cpv_chunks)
+        # Spawn the task and add it to the array
+        task = Threads.@spawn do_subgrid(trees[i], cached_models[i], cvp_chunk)
+        push!(tasks, task)
+    end
+
+    # Wait for all tasks to finish
+    foreach(wait, tasks)
+
+    #@show length(first(cpv_chunks))
+    # cp = codon_param_vec[1]
+    # @show trees[1].message[1].state[1]
+    # @show trees[2].message[1].state[1]
+    # keys1 = map(x -> (x[1]), collect(keys(cached_models[1](nothing, access_dict=true))))
+    # @show unique(keys1)
+    # println()
+    # keys2 = map(x -> (x[1]), collect(keys(cached_models[2](nothing, access_dict=true))))
+    # @show unique(keys2)
+    # @show intersect(keys1, keys2)
+    # @show codon_param_vec[max(1, length(codon_param_vec) ÷ Threads.nthreads()) + 1][1]
+
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix));
+    site_scalers = maximum(log_con_lik_matrix, dims = 1);
+    for i in 1:num_sites
+        con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+
 function difFUBAR_grid_maxi_cache_models(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4)
 
     cached_model = MG94_cacher(code)
@@ -586,7 +692,7 @@ function difFUBAR_grid_maxi(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1,
         end
     end
     @show model_time
-    return pure_subclades, cached_messages, cached_tag_inds
+    #return pure_subclades, cached_messages, cached_tag_inds
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
