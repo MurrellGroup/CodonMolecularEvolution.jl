@@ -340,9 +340,9 @@ function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 
 
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
-    function do_subgrid(tree, cached_model, cvp_chunk)
-        # Note that cvp_chunk is already enumerated
-        for (row_ind,cp) in cvp_chunk
+    function do_subgrid(tree, cached_model, cpv_chunk)
+        # Note that cpv_chunk is already enumerated
+        for (row_ind,cp) in cpv_chunk
             alpha = cp[1]
             omegas = cp[2:end]
             tagged_models = N_Omegas_model_func(cached_model, tags,omegas,alpha,GTRmat,F3x4_freqs, code)
@@ -362,9 +362,9 @@ function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, length(codon_param_vec) ÷ Threads.nthreads()))
     tasks = []
-    for (i, cvp_chunk) in enumerate(cpv_chunks)
+    for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
-        task = Threads.@spawn do_subgrid(trees[i], cached_models[i], cvp_chunk)
+        task = Threads.@spawn do_subgrid(trees[i], cached_models[i], cpv_chunk)
         push!(tasks, task)
     end
 
@@ -686,7 +686,7 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
     function do_subgrid(tree, cached_model, cpv_chunk, idx)
-        # Note that cvp_chunk is already enumerated
+        # Note that cpv_chunk is already enumerated
         for (row_ind,cp) in cpv_chunk
             alpha = cp[1]
             omegas = cp[2:end]
