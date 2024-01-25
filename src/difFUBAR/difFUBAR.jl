@@ -360,7 +360,7 @@ function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 
         end
     end
 
-    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, length(codon_param_vec) ÷ Threads.nthreads()))
+    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / Threads.nthreads())))
     tasks = []
     for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
@@ -711,7 +711,7 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
         end
     end
 
-    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, length(codon_param_vec) ÷ Threads.nthreads()))
+    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / Threads.nthreads())))
     tasks = []
     for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
