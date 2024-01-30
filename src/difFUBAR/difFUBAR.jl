@@ -64,6 +64,63 @@ end
 
 
 """
+    getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=FelNode[])
+
+- Should usually be called on the root of the tree. Traverses the tree recursively with a depth-first search to find roots of pure subclades, presuming that nodenames have been trailed with tags.
+- To just get the pure subclades, one can run `pure_subclades, _, _ = getpuresubclades(tree, tags)`.
+
+# Arguments
+- `node`: The root of the search.
+- `tags`: A vector of tags.
+- `pure_subclades`: A vector of pure subclades. Defaults to an empty vector.
+
+# Returns
+- A tuple containing the vector of pure subclades, a boolean indicating whether the node is pure, and the index of the node's tag.
+"""
+function getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=FelNode[])
+    # Get the index of the node's tag
+    tag_ind_of_node = model_ind(node.name, tags)
+
+    # If the node is a leaf, it's pure
+    if isleafnode(node)
+        return pure_subclades, true, tag_ind_of_node
+    end
+
+    children_are_pure = Vector{Bool}()
+    children_tag_inds = Vector{Int64}()
+
+    for child in node.children
+        pure_subclades, child_is_pure, tag_ind = getpuresubclades(child, tags, pure_subclades)
+        push!(children_are_pure, child_is_pure)
+        push!(children_tag_inds, tag_ind)
+    end
+
+    # Get the index of the node's first child's tag
+    tag_ind_of_first_child = first(children_tag_inds)
+
+    # This is the case where the subclade starting at node is pure
+    if all(children_are_pure) && all(x == tag_ind_of_first_child for x in children_tag_inds)
+        if tag_ind_of_node != tag_ind_of_first_child
+            # The purity is broken at this node
+            push!(pure_subclades, node)
+            return pure_subclades, false, tag_ind_of_node
+        end
+        # The purity is not broken at this node
+        return pure_subclades, true, tag_ind_of_node
+    end
+
+    # This is the case where some child has mixed tags or the children are pure with regards to different tags
+    for (child_is_pure, child) in zip(children_are_pure, node.children)
+        if !child_is_pure || isleafnode(child)
+            # We don't want to push leaves into pure_subclades
+            continue
+        end
+        push!(pure_subclades, child)
+    end
+    return pure_subclades, false, tag_ind_of_node
+end
+
+"""
 
 
 """
@@ -444,54 +501,7 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
 
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
-    pure_subclades = FelNode[]
-    # Traverses the tree recursively with a dfs whilst pushing roots of pure subclades to list^
-    function find_pure_subclades(node)
-        # Get the index of the node's tag
-        tag_ind_of_node = model_ind(node.name, tags)
-
-        # If the node is a leaf, it's pure
-        if length(node.children) == 0
-            return true, tag_ind_of_node
-        end
-
-        children_is_pure_and_tag = []
-        pure_children = FelNode[]
-
-        for child in node.children
-            child_is_pure, tag_ind = find_pure_subclades(child)
-            if child_is_pure
-                push!(pure_children, child)
-            end
-            push!(children_is_pure_and_tag, (child_is_pure, tag_ind))
-        end
-
-        # Get the index of the node's first child's tag
-        tag_ind_of_first_child = children_is_pure_and_tag[1][2]
-
-        # This is the case where the subclade starting at node is pure
-        if all(x == (true, tag_ind_of_first_child) for x in children_is_pure_and_tag)
-            if tag_ind_of_node != tag_ind_of_first_child
-                # The purity is broken at this node
-                push!(pure_subclades, node)
-                return false, tag_ind_of_node
-            end
-            # The purity is not broken at this node
-            return true, tag_ind_of_node
-        end
-
-        # This is the case where some child has mixed tags or the children are pure with regards to different tags
-        for pure_child in pure_children
-            if length(pure_child.children) == 0
-                # We don't want to push leaves into pure_subclades
-                continue
-            end
-            push!(pure_subclades, pure_child)
-        end
-        return false, tag_ind_of_node
-    end
-
-    find_pure_subclades(tree)
+    pure_subclades, _, _ = getpuresubclades(tree, tags)
 
     cached_messages = Dict()
     cached_tag_inds = Dict()
@@ -600,54 +610,7 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     end
     codon_param_vec;
     
-    pure_subclades = FelNode[]
-    # Traverses the tree recursively with a dfs whilst pushing roots of pure subclades to list^
-    function find_pure_subclades(node)
-        # Get the index of the node's tag
-        tag_ind_of_node = model_ind(node.name, tags)
-
-        # If the node is a leaf, it's pure
-        if length(node.children) == 0
-            return true, tag_ind_of_node
-        end
-
-        children_is_pure_and_tag = []
-        pure_children = FelNode[]
-
-        for child in node.children
-            child_is_pure, tag_ind = find_pure_subclades(child)
-            if child_is_pure
-                push!(pure_children, child)
-            end
-            push!(children_is_pure_and_tag, (child_is_pure, tag_ind))
-        end
-
-        # Get the index of the node's first child's tag
-        tag_ind_of_first_child = children_is_pure_and_tag[1][2]
-
-        # This is the case where the subclade starting at node is pure
-        if all(x == (true, tag_ind_of_first_child) for x in children_is_pure_and_tag)
-            if tag_ind_of_node != tag_ind_of_first_child
-                # The purity is broken at this node
-                push!(pure_subclades, node)
-                return false, tag_ind_of_node
-            end
-            # The purity is not broken at this node
-            return true, tag_ind_of_node
-        end
-
-        # This is the case where some child has mixed tags or the children are pure with regards to different tags
-        for pure_child in pure_children
-            if length(pure_child.children) == 0
-                # We don't want to push leaves into pure_subclades
-                continue
-            end
-            push!(pure_subclades, pure_child)
-        end
-        return false, tag_ind_of_node
-    end
-
-    find_pure_subclades(tree)
+    pure_subclades, _, _ = getpuresubclades(tree, tags)
 
     cached_messages = Dict()
     cached_tag_inds = Dict()
