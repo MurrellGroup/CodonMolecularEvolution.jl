@@ -211,7 +211,7 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, fore
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
 
     function add_to_each_element(vec_of_vec, elems)
@@ -290,7 +290,7 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code; verbosity 
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
 
     function add_to_each_element(vec_of_vec, elems)
@@ -372,7 +372,7 @@ function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
 
     function add_to_each_element(vec_of_vec, elems)
@@ -476,7 +476,8 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
+    @show is_background
     tensor_dims = 1+num_groups+is_background;
 
     function add_to_each_element(vec_of_vec, elems)
@@ -494,7 +495,7 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
         codon_param_vec = add_to_each_element(codon_param_vec,background_omega_grid)
     end
     codon_param_vec;
-    
+
     num_sites = tree.message[1].sites
     l = length(codon_param_vec)
     log_con_lik_matrix = zeros(l,num_sites);
@@ -591,7 +592,7 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
 
     function add_to_each_element(vec_of_vec, elems)
