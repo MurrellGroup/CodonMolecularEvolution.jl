@@ -507,8 +507,10 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     cached_messages = Dict()
     cached_tag_inds = Dict()
     model_time = 0
-    @time begin
-        for x in pure_subclades
+    copy_time = 0
+    
+    for x in pure_subclades
+        @time begin
             cached_messages[x] = Dict()
             cached_tag_inds[x] = model_ind(x.children[1].name, tags)
             parent = x.parent
@@ -525,14 +527,14 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
 
                 model_time += @elapsed models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs,code)
                 felsenstein!(x, models)
-                cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+                copy_time += @elapsed cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
             end
             x.parent = parent
             x.children = FelNode[]
         end
     end
 
-    @time @show model_time Base.summarysize(cached_messages) / (1024^2) "mb" length(pure_subclades) Base.summarysize(cached_model) / (1024^2) "mb"
+    @time @show model_time copy_time Base.summarysize(cached_messages) / (1024^2) "mb" length(pure_subclades) Base.summarysize(cached_model) / (1024^2) "mb"
     #return pure_subclades, cached_messages, cached_tag_inds
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
@@ -569,7 +571,10 @@ end
 
 function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4)
 
+    MolecularEvolution.set_node_indices!(tree)
+    @time trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
     cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
+    @time nodelists = [getnodelist(tree) for tree in trees]
 
     #This is the function that assigns models to branches
     #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
@@ -577,6 +582,11 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
         models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
         return n::FelNode -> [models[model_ind(n.name,tags)]]
+    end
+
+    function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
+        model = cached_model(alpha,alpha*omega,nuc_mat,F3x4, genetic_code = code);
+        return n::FelNode -> [model]
     end
 
     #Defines the grid used for inference.
@@ -613,35 +623,64 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     
     pure_subclades, _, _ = getpuresubclades(tree, tags)
 
+    if length(pure_subclades) > 0
+        alpha_and_single_omega_grids = Dict()
+        alphagrid_vectorized = [[a] for a in alphagrid]
+        alpha_and_single_omega_grids["Omega"] = add_to_each_element(alphagrid_vectorized,omegagrid)
+        if is_background
+            alpha_and_single_omega_grids["OmegaBackground"] = add_to_each_element(alphagrid_vectorized,background_omega_grid)
+        end
+    end
+
+    function do_subgrid(pure_subclade, cached_model, aso_chunk)
+        cached_messages_x = Dict()
+        for (alpha, omega) in aso_chunk
+            model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
+            felsenstein!(pure_subclade, model)
+            cached_messages_x[(alpha, omega)] = deepcopy(pure_subclade.message)
+        end
+        return cached_messages_x
+    end
+
     cached_messages = Dict()
     cached_tag_inds = Dict()
     for x in pure_subclades
-        cached_messages[x] = Dict()
-        cached_tag_inds[x] = model_ind(x.children[1].name, tags)
-        parent = x.parent
-        x.parent = nothing
-        for cp in codon_param_vec
-            alpha = cp[1]
-            omegas = cp[2:end]
-
-            relevant_omega = omegas[cached_tag_inds[x]]
-
-            if haskey(cached_messages[x], (alpha, relevant_omega))
-                continue
-            end
-
-            models = N_Omegas_model_func(first(cached_models), tags,omegas,alpha,GTRmat,F3x4_freqs,code)
-            felsenstein!(x, models)
-            cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+        tag_ind_below = model_ind(x.children[1].name, tags)
+        cached_tag_inds[x] = tag_ind_below
+        if tag_ind_below <= num_groups
+            alpha_and_single_omega_grid = alpha_and_single_omega_grids["Omega"]
+        else
+            alpha_and_single_omega_grid = alpha_and_single_omega_grids["OmegaBackground"]
         end
-        x.parent = parent
-        x.children = FelNode[]
+        nodeindex = x.nodeindex
+        parents = FelNode[]
+        for nodelist in nodelists
+            push!(parents, nodelist[nodeindex].parent)
+            nodelist[nodeindex].parent = nothing
+        end
+
+        aso_chunks = Iterators.partition(alpha_and_single_omega_grid, max(1, ceil(Int, length(alpha_and_single_omega_grid) / Threads.nthreads())))
+        tasks = []
+        for (i, aso_chunk) in enumerate(aso_chunks)
+            # Spawn the task and add it to the array
+            task = Threads.@spawn do_subgrid(nodelists[i][nodeindex], cached_models[i], aso_chunk)
+            push!(tasks, task)
+        end
+
+        # Wait for all tasks to finish and collect their return values
+        @time dicts = [fetch(task) for task in tasks];
+
+        # Merge all the returned Dicts, and put it in the big Dict of messages
+        merged_dicts = merge(dicts...)
+        cached_messages[x] = merged_dicts
+
+        for (nodelist, parent) in zip(nodelists, parents)
+            nodelist[nodeindex].parent = parent
+            nodelist[nodeindex].children = FelNode[]
+        end
     end
 
     GC.gc()
-    MolecularEvolution.set_node_indices!(tree)
-    trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
-    @time nodelists = [getnodelist(tree) for tree in trees]
 
     num_sites = tree.message[1].sites
     l = length(codon_param_vec)
