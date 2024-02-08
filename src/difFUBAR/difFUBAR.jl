@@ -646,13 +646,14 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     cached_tag_inds = Dict()
     for x in pure_subclades
         tag_ind_below = model_ind(x.children[1].name, tags)
-        cached_tag_inds[x] = tag_ind_below
+        nodeindex = x.nodeindex
+        cached_tag_inds[nodeindex] = tag_ind_below
         if tag_ind_below <= num_groups
             alpha_and_single_omega_grid = alpha_and_single_omega_grids["Omega"]
         else
             alpha_and_single_omega_grid = alpha_and_single_omega_grids["OmegaBackground"]
         end
-        nodeindex = x.nodeindex
+
         parents = FelNode[]
         for nodelist in nodelists
             push!(parents, nodelist[nodeindex].parent)
@@ -672,7 +673,7 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
 
         # Merge all the returned Dicts, and put it in the big Dict of messages
         merged_dicts = merge(dicts...)
-        cached_messages[x] = merged_dicts
+        cached_messages[nodeindex] = merged_dicts
 
         for (nodelist, parent) in zip(nodelists, parents)
             nodelist[nodeindex].parent = parent
@@ -696,9 +697,10 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
             tagged_models = N_Omegas_model_func(cached_model, tags,omegas,alpha,GTRmat,F3x4_freqs, code)
 
             for x in pure_subclades
+                nodeindex = x.nodeindex
                 # Get the local equivalent node to x
-                y = nodelists[idx][x.nodeindex]
-                y.message = cached_messages[x][(alpha, omegas[cached_tag_inds[x]])]
+                y = nodelists[idx][nodeindex]
+                y.message = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
             end
 
             felsenstein!(tree,tagged_models)
