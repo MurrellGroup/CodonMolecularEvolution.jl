@@ -22,6 +22,10 @@ function model_ind(str::String, tags::Vector{String})
     return ind
 end
 
+function add_to_each_element(vec_of_vec, elems)
+    return [vcat(v,[e]) for v in vec_of_vec for e in elems]
+end
+
 function collapse_counts(param_vec,count_vec; cases = nothing)
     if isnothing(cases)
         cases = sort(union(param_vec))
@@ -292,10 +296,6 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code; verbosity 
     num_groups = length(tags)
     is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
-
-    function add_to_each_element(vec_of_vec, elems)
-        return [vcat(v,[e]) for v in vec_of_vec for e in elems]
-    end
     
     codon_param_vec = [[a] for a in alphagrid]
     param_kinds = ["Alpha"]
@@ -374,10 +374,6 @@ function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 
     num_groups = length(tags)
     is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
-
-    function add_to_each_element(vec_of_vec, elems)
-        return [vcat(v,[e]) for v in vec_of_vec for e in elems]
-    end
     
     codon_param_vec = [[a] for a in alphagrid]
     param_kinds = ["Alpha"]
@@ -479,10 +475,6 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     @show is_background
     tensor_dims = 1+num_groups+is_background;
-
-    function add_to_each_element(vec_of_vec, elems)
-        return [vcat(v,[e]) for v in vec_of_vec for e in elems]
-    end
     
     codon_param_vec = [[a] for a in alphagrid]
     param_kinds = ["Alpha"]
@@ -604,10 +596,6 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     num_groups = length(tags)
     is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
-
-    function add_to_each_element(vec_of_vec, elems)
-        return [vcat(v,[e]) for v in vec_of_vec for e in elems]
-    end
     
     codon_param_vec = [[a] for a in alphagrid]
     param_kinds = ["Alpha"]
