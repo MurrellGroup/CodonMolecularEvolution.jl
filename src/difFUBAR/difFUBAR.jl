@@ -26,6 +26,19 @@ function add_to_each_element(vec_of_vec, elems)
     return [vcat(v,[e]) for v in vec_of_vec for e in elems]
 end
 
+#This is the function that assigns models to branches
+#Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
+#Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
+    models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
+    return n::FelNode -> [models[model_ind(n.name,tags)]]
+end
+
+function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
+    model = cached_model(alpha,alpha*omega,nuc_mat,F3x4, genetic_code = code);
+    return n::FelNode -> [model]
+end
+
 function collapse_counts(param_vec,count_vec; cases = nothing)
     if isnothing(cases)
         cases = sort(union(param_vec))
@@ -273,14 +286,6 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code; verbosity 
     cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
     trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
 
-    #This is the function that assigns models to branches
-    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
-    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
-    function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
-        models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
-        return n::FelNode -> [models[model_ind(n.name,tags)]]
-    end
-
     #Defines the grid used for inference.
     function gridsetup(lb, ub, num_below_one, trin, tr)
         step = (trin(1.0) - trin(lb))/num_below_one
@@ -350,14 +355,6 @@ function difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 
 
     cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
     trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
-
-    #This is the function that assigns models to branches
-    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
-    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
-    function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
-        models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
-        return n::FelNode -> [models[model_ind(n.name,tags)]]
-    end
 
     #Defines the grid used for inference.
     function gridsetup(lb, ub, num_below_one, trin, tr)
@@ -452,19 +449,6 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     MolecularEvolution.set_node_indices!(tree)
     cached_model = MG94_cacher(code)
 
-    #This is the function that assigns models to branches
-    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
-    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
-    function N_Omegas_model_func(tags,omega_vec,alpha,nuc_mat,F3x4, code)
-        models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
-        return n::FelNode -> [models[model_ind(n.name,tags)]]
-    end
-
-    function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
-        model = cached_model(alpha,alpha*omega,nuc_mat,F3x4, genetic_code = code);
-        return n::FelNode -> [model]
-    end
-
     #Defines the grid used for inference.
     function gridsetup(lb, ub, num_below_one, trin, tr)
         step = (trin(1.0) - trin(lb))/num_below_one
@@ -544,7 +528,7 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
-        tagged_models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs, code)
+        tagged_models = N_Omegas_model_func(cached_model,tags,omegas,alpha,GTRmat,F3x4_freqs, code)
 
         for x in pure_subclades
             nodeindex = x.nodeindex
@@ -581,19 +565,6 @@ function difFUBAR_grid_tree_surgery_chunks(tree, tags, GTRmat, F3x4_freqs, code;
     @time trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
     cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
     @time nodelists = [getnodelist(tree) for tree in trees]
-
-    #This is the function that assigns models to branches
-    #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
-    #Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
-    function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
-        models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
-        return n::FelNode -> [models[model_ind(n.name,tags)]]
-    end
-
-    function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
-        model = cached_model(alpha,alpha*omega,nuc_mat,F3x4, genetic_code = code);
-        return n::FelNode -> [model]
-    end
 
     #Defines the grid used for inference.
     function gridsetup(lb, ub, num_below_one, trin, tr)
