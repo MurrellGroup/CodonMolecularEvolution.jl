@@ -449,6 +449,7 @@ end
 
 function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4)
 
+    MolecularEvolution.set_node_indices!(tree)
     cached_model = MG94_cacher(code)
 
     #This is the function that assigns models to branches
@@ -457,6 +458,11 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     function N_Omegas_model_func(tags,omega_vec,alpha,nuc_mat,F3x4, code)
         models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
         return n::FelNode -> [models[model_ind(n.name,tags)]]
+    end
+
+    function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
+        model = cached_model(alpha,alpha*omega,nuc_mat,F3x4, genetic_code = code);
+        return n::FelNode -> [model]
     end
 
     #Defines the grid used for inference.
@@ -496,6 +502,15 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
 
     pure_subclades, _, _ = getpuresubclades(tree, tags)
 
+    if length(pure_subclades) > 0
+        alpha_and_single_omega_grids = Dict()
+        alphagrid_vectorized = [[a] for a in alphagrid]
+        alpha_and_single_omega_grids["Omega"] = add_to_each_element(alphagrid_vectorized,omegagrid)
+        if is_background
+            alpha_and_single_omega_grids["OmegaBackground"] = add_to_each_element(alphagrid_vectorized,background_omega_grid)
+        end
+    end
+
     cached_messages = Dict()
     cached_tag_inds = Dict()
     model_time = 0
@@ -503,23 +518,21 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
     
     for x in pure_subclades
         @time begin
-            cached_messages[x] = Dict()
-            cached_tag_inds[x] = model_ind(x.children[1].name, tags)
+            tag_ind_below = model_ind(x.children[1].name, tags)
+            nodeindex = x.nodeindex
+            cached_tag_inds[nodeindex] = tag_ind_below
+            if tag_ind_below <= num_groups
+                alpha_and_single_omega_grid = alpha_and_single_omega_grids["Omega"]
+            else
+                alpha_and_single_omega_grid = alpha_and_single_omega_grids["OmegaBackground"]
+            end
+            cached_messages[nodeindex] = Dict()
             parent = x.parent
             x.parent = nothing
-            for cp in codon_param_vec
-                alpha = cp[1]
-                omegas = cp[2:end]
-
-                relevant_omega = omegas[cached_tag_inds[x]]
-
-                if haskey(cached_messages[x], (alpha, relevant_omega))
-                    continue
-                end
-
-                model_time += @elapsed models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs,code)
-                felsenstein!(x, models)
-                copy_time += @elapsed cached_messages[x][(alpha, relevant_omega)] = deepcopy(x.message)
+            for (alpha, omega) in alpha_and_single_omega_grid
+                model_time += @elapsed model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
+                felsenstein!(x, model)
+                copy_time += @elapsed cached_messages[nodeindex][(alpha, omega)] = deepcopy(x.message)
             end
             x.parent = parent
             x.children = FelNode[]
@@ -534,7 +547,8 @@ function difFUBAR_grid_tree_surgery(tree, tags, GTRmat, F3x4_freqs, code; verbos
         tagged_models = N_Omegas_model_func(tags,omegas,alpha,GTRmat,F3x4_freqs, code)
 
         for x in pure_subclades
-            x.message = cached_messages[x][(alpha, omegas[cached_tag_inds[x]])]
+            nodeindex = x.nodeindex
+            x.message = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
         end
 
         felsenstein!(tree,tagged_models)
