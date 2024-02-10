@@ -1,4 +1,6 @@
-using MolecularEvolution, CodonMolecularEvolution, Glob, BenchmarkTools, CSV, DataFrames
+using MolecularEvolution, CodonMolecularEvolution, Glob, BenchmarkTools, CSV, DataFrames, LinearAlgebra
+
+BLAS.set_num_threads(1)
 
 function test_grids(dir)
     @show dir
@@ -16,39 +18,47 @@ function test_grids(dir)
     if dir == "./test/data/Ace2_no_background/"
         println("Precompiling...")
         tree_ts = deepcopy(tree)
-        tree_tsc = deepcopy(tree)
+        tree_tsp = deepcopy(tree)
 
         #Force compilation once
-        con_lik_matrix_no_prune, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = CodonMolecularEvolution.difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 50s
-        con_lik_matrix_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = CodonMolecularEvolution.difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 28s
-        con_lik_matrix_chunks, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = CodonMolecularEvolution.difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4)
-        con_lik_matrix_tree_surgery, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = CodonMolecularEvolution.difFUBAR_grid_tree_surgery(tree_ts, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 28s
-        con_lik_matrix_tree_surgery_chunks, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = CodonMolecularEvolution.difFUBAR_grid_tree_surgery_chunks(tree_tsc, tags, GTRmat, F3x4_freqs, code,    verbosity=0, foreground_grid=6, background_grid=4) # 28s
+        log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+        CodonMolecularEvolution.difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 0, foreground_grid = 6, background_grid = 4)
+    
+        log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_ts, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+        CodonMolecularEvolution.difFUBAR_grid_treesurgery(tree_ts, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 0, foreground_grid = 6, background_grid = 4)
+
+        log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_tsp, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+        CodonMolecularEvolution.difFUBAR_grid_treesurgery_and_parallel(tree_tsp, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 0, foreground_grid = 6, background_grid = 4)
         GC.gc()
     end
     tree_ts = deepcopy(tree)
-    tree_tsc = deepcopy(tree)
+    tree_tsp = deepcopy(tree)
 
     #Benchmark
     #Warning: the benchmarks for the tree_surgery methods are not accurate because the tree gets truncated after first use
     #Consider using @timed instead
     (con_lik_matrix_no_prune, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR, bytes_difFUBAR = @timed CodonMolecularEvolution.difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 50s
-    (con_lik_matrix_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_parallel, bytes_difFUBAR_parallel = @timed CodonMolecularEvolution.difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 28s
-    (con_lik_matrix_chunks, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_chunks, bytes_difFUBAR_chunks = @timed CodonMolecularEvolution.difFUBAR_grid_chunks(tree, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4)
-    (con_lik_matrix_tree_surgery, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_tree_surgery, bytes_difFUBAR_tree_surgery = @timed CodonMolecularEvolution.difFUBAR_grid_tree_surgery(tree_ts, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 28s
-    (con_lik_matrix_tree_surgery_chunks, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_tree_surgery_chunks, bytes_difFUBAR_tree_surgery_chunks = @timed CodonMolecularEvolution.difFUBAR_grid_tree_surgery_chunks(tree_tsc, tags, GTRmat, F3x4_freqs, code, verbosity=0, foreground_grid=6, background_grid=4) # 28s
+    
+    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    (con_lik_matrix_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_parallel, bytes_difFUBAR_parallel = @timed CodonMolecularEvolution.difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 0, foreground_grid = 6, background_grid = 4)
+    
+    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_ts, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    (con_lik_matrix_treesurgery, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery = @timed CodonMolecularEvolution.difFUBAR_grid_treesurgery(tree_ts, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 0, foreground_grid = 6, background_grid = 4)
+
+    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_tsp, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    (con_lik_matrix_treesurgery_and_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel = @timed CodonMolecularEvolution.difFUBAR_grid_treesurgery_and_parallel(tree_tsp, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 0, foreground_grid = 6, background_grid = 4)
+    
     @assert con_lik_matrix_no_prune == con_lik_matrix_parallel
-    @assert con_lik_matrix_no_prune == con_lik_matrix_chunks
-    @assert con_lik_matrix_no_prune == con_lik_matrix_tree_surgery
-    @assert con_lik_matrix_no_prune == con_lik_matrix_tree_surgery_chunks
+    @assert con_lik_matrix_no_prune == con_lik_matrix_treesurgery
+    @assert con_lik_matrix_no_prune == con_lik_matrix_treesurgery_and_parallel
 
     f(time::Float64, bytes::Int64) = string(round(time, digits=4)) * "s, " * string(round(bytes / 10^6, digits=4)) * " M allocs"
-    [f(timed_difFUBAR, bytes_difFUBAR), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_chunks, bytes_difFUBAR_chunks), f(timed_difFUBAR_tree_surgery, bytes_difFUBAR_tree_surgery), f(timed_difFUBAR_tree_surgery_chunks, bytes_difFUBAR_tree_surgery_chunks)], length(getleaflist(tree)), tree.message[1].sites
+    [f(timed_difFUBAR, bytes_difFUBAR), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery), f(timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel)], length(getleaflist(tree)), tree.message[1].sites
 end
 
 dir_outer = "./test/data"
 n = length(readdir(dir_outer))
-timings = Matrix{String}(undef, n, 5)
+timings = Matrix{String}(undef, n, 4)
 num_sites_vec = Vector{Int64}(undef, n)
 num_taxa_vec = Vector{Int64}(undef, n)
 dir_names = Vector{String}(undef, n)
@@ -62,6 +72,6 @@ for (i, dir_name) in enumerate(readdir(dir_outer))
     dir_names[i] = dir_name
 end
 
-df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, timings), [:test_case, :num_taxa, :num_sites, :difFUBAR, :difFUBAR_parallel, :difFUBAR_chunks, :difFUBAR_tree_surgery, :difFUBAR_tree_surgery_chunks])
+df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, timings), [:test_case, :num_taxa, :num_sites, :difFUBAR, :difFUBAR_parallel, :difFUBAR_treesurgery, :difFUBAR_treesurgery_and_parallel])
 CSV.write("./test/timings-t16-BLAS-1-ParvoVP-included.csv", df) 
 exit()
