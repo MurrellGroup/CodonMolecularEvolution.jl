@@ -88,6 +88,17 @@ function getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=Fe
     return pure_subclades, false, tag_ind_of_node
 end
 
+#Calculates the ratio of nodes that are in a pure clade to total nodes in the tree
+function calc_pure_ratio(tree, tags)
+    pure_subclades, _, _ = getpuresubclades(tree, tags)
+    c = 0
+    for x in pure_subclades
+        #The root of the pure clade is not counted
+        c += length(getnodelist(x)) - 1
+    end
+    return c / length(getnodelist(tree))
+end
+
 #Defines the grid used for inference.
 function gridsetup(lb, ub, num_below_one, trin, tr)
     step = (trin(1.0) - trin(lb))/num_below_one

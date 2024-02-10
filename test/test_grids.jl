@@ -53,7 +53,7 @@ function test_grids(dir)
     @assert con_lik_matrix_no_prune == con_lik_matrix_treesurgery_and_parallel
 
     f(time::Float64, bytes::Int64) = string(round(time, digits=4)) * "s, " * string(round(bytes / 10^6, digits=4)) * " M allocs"
-    [f(timed_difFUBAR, bytes_difFUBAR), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery), f(timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel)], length(getleaflist(tree)), tree.message[1].sites
+    [f(timed_difFUBAR, bytes_difFUBAR), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery), f(timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel)], length(getleaflist(tree)), tree.message[1].sites, CodonMolecularEvolution.calc_pure_ratio(tree, tags)
 end
 
 dir_outer = "./test/data"
@@ -62,16 +62,18 @@ timings = Matrix{String}(undef, n, 4)
 num_sites_vec = Vector{Int64}(undef, n)
 num_taxa_vec = Vector{Int64}(undef, n)
 dir_names = Vector{String}(undef, n)
+pure_ratio_vec = Vector{Float64}(undef, n)
 
 for (i, dir_name) in enumerate(readdir(dir_outer))
     dir = joinpath(dir_outer, dir_name, "")
-    timing, num_taxa, num_sites = test_grids(dir)
+    timing, num_taxa, num_sites, pure_ratio = test_grids(dir)
     timings[i, :] = timing
     num_taxa_vec[i] = num_taxa
     num_sites_vec[i] = num_sites
     dir_names[i] = dir_name
+    pure_ratio_vec[i] = pure_ratio
 end
 
-df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, timings), [:test_case, :num_taxa, :num_sites, :difFUBAR, :difFUBAR_parallel, :difFUBAR_treesurgery, :difFUBAR_treesurgery_and_parallel])
+df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, pure_ratio_vec, timings), [:test_case, :num_taxa, :num_sites, :pure_ratio, :difFUBAR, :difFUBAR_parallel, :difFUBAR_treesurgery, :difFUBAR_treesurgery_and_parallel])
 CSV.write("./test/timings-t16-BLAS-1-ParvoVP-included.csv", df) 
 exit()
