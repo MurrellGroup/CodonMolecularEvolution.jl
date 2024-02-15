@@ -88,15 +88,26 @@ function getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=Fe
     return pure_subclades, false, tag_ind_of_node
 end
 
-#Calculates the ratio of nodes that are in a pure clade to total nodes in the tree
-function calc_pure_ratio(tree, tags)
+#Calculates the ratio of nodes that are in a pure clade to total nodes in the tree (1st return value)
+#Calculates the number of pure omega and background omega clades (2nd and 3rd return values)
+function get_purity_info(tree, tags, num_groups)
     pure_subclades, _, _ = getpuresubclades(tree, tags)
     c = 0
     for x in pure_subclades
         #The root of the pure clade is not counted
         c += length(getnodelist(x)) - 1
     end
-    return c / length(getnodelist(tree))
+    num_omega_clades = count(x -> model_ind(x.children[1].name, tags) <= num_groups, pure_subclades)
+    num_background_omega_clades = length(pure_subclades) - num_omega_clades
+    return c / length(getnodelist(tree)), num_omega_clades, num_background_omega_clades
+end
+
+#Estimates the extra memory that the tree-surgery version would use by caching messages
+function extra_mem_from_caching(num_sites, alphagrid, omegagrid, background_omega_grid, num_omega_clades, num_background_omega_clades, code)
+    num_alphas, num_omegas, num_background_omegas = map(length, (alphagrid, omegagrid, background_omega_grid))
+    F64s_in_CodonPartition = num_sites * (length(code.sense_codons) + 1) # the '+ 1' is for .scaling
+    total_bytes_from_caching = 8 * F64s_in_CodonPartition * num_alphas * (num_omegas * num_omega_clades + num_background_omegas * num_background_omega_clades)
+    return total_bytes_from_caching
 end
 
 #Defines the grid used for inference.
@@ -199,10 +210,10 @@ function get_messages_for_aso_pairs(pure_subclade::FelNode, cached_model, aso_ch
 end
 
 function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 1, foreground_grid = 6, background_grid = 4)
-
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
     trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
-
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / Threads.nthreads())))
@@ -241,7 +252,7 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
     cached_tag_inds = Dict()
     model_time = 0
     copy_time = 0
-    
+    println("Preprune", "RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     for x in pure_subclades
         @time begin
             tag_ind_below = model_ind(x.children[1].name, tags)
@@ -264,7 +275,7 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
             x.children = FelNode[]
         end
     end
-
+    println("Postprune", "RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     @time @show model_time copy_time Base.summarysize(cached_messages) / (1024^2) "mb" length(pure_subclades) Base.summarysize(cached_model) / (1024^2) "mb"
     #return pure_subclades, cached_messages, cached_tag_inds
     for (row_ind,cp) in enumerate(codon_param_vec)
@@ -377,6 +388,6 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
     for i in 1:num_sites
         con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
     end
-
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
