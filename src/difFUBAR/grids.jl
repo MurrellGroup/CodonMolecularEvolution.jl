@@ -110,39 +110,39 @@ function extra_mem_from_caching(num_sites, alphagrid, omegagrid, background_omeg
     return total_bytes_from_caching
 end
 
-function choose_grid_and_threads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
+function choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
     purity_ratio, num_omega_clades, num_background_omega_clades = get_purity_info(tree, tags, num_groups)
     extra_mem = extra_mem_from_caching(num_sites, alphagrid, omegagrid, background_omega_grid, num_omega_clades, num_background_omega_clades, code)
     
     tree_size = Base.summarysize(tree) #Estimates (often overestimates) memory usage of one tree
     free_memory = Sys.free_memory()
-    max_threads = min(free_memory ÷ tree_size, Threads.nthreads(), Sys.CPU_THREADS ÷ 2)
+    max_nthreads = Int(min(free_memory ÷ tree_size, Threads.nthreads(), Sys.CPU_THREADS ÷ 2))
     tree_surgery_is_considered = extra_mem < free_memory && purity_ratio > 0.1 #Trying not to introduce too much overhead if the speedup isn't significant
-    parallelization_is_considered = max_threads > 1
+    parallelization_is_considered = max_nthreads > 1
 
     if !(tree_surgery_is_considered || parallelization_is_considered)
         return difFUBAR_grid, 1
     elseif !tree_surgery_is_considered
-        return difFUBAR_grid_parallel, max_threads
+        return difFUBAR_grid_parallel, max_nthreads
     elseif !parallelization_is_considered
         return difFUBAR_grid_treesurgery, 1
     end
     #From now on, we know that both tree-surgery and parallelization are considered
-    if extra_mem + tree_size * max_threads < free_memory
-        return difFUBAR_grid_treesurgery_and_parallel, max_threads
+    if extra_mem + tree_size * max_nthreads < free_memory
+        return difFUBAR_grid_treesurgery_and_parallel, max_nthreads
     end
-    if purity_ratio < 0.5 #In this case, maximum speedup from tree-surgery would be 2x, but we know that max_threads > 1
-        return difFUBAR_grid_parallel, max_threads
+    if purity_ratio < 0.5 #In this case, maximum speedup from tree-surgery would be 2x, but we know that max_nthreads > 1
+        return difFUBAR_grid_parallel, max_nthreads
     end
-    max_threads_for_treesurgery_and_parallel = (free_memory - extra_mem) ÷ tree_size
-    if max_threads_for_treesurgery_and_parallel > 1
-        return difFUBAR_grid_treesurgery_and_parallel, max_threads_for_treesurgery_and_parallel
+    max_nthreads_for_treesurgery_and_parallel = Int((free_memory - extra_mem) ÷ tree_size)
+    if max_nthreads_for_treesurgery_and_parallel > 1
+        return difFUBAR_grid_treesurgery_and_parallel, max_nthreads_for_treesurgery_and_parallel
     end
     #Now we must choose between tree surgery and parallelization
-    if 1 - purity_ratio < 1 / max_threads #Estimates and compares speedup coefficients
+    if 1 - purity_ratio < 1 / max_nthreads #Estimates and compares speedup coefficients
         return difFUBAR_grid_treesurgery, 1
     else
-        return difFUBAR_grid_parallel, max_threads
+        return difFUBAR_grid_parallel, max_nthreads
     end
 end
 
@@ -245,23 +245,29 @@ function get_messages_for_aso_pairs(pure_subclade::FelNode, cached_model, aso_ch
     return cached_messages_x
 end
 
-function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 1, foreground_grid = 6, background_grid = 4)
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
-    cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
-    trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
+function difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    cached_model = MG94_cacher(code)
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
-    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / Threads.nthreads())))
-    tasks = []
-    for (i, cpv_chunk) in enumerate(cpv_chunks)
-        # Spawn the task and add it to the array
-        task = Threads.@spawn do_subgrid!(trees[i], cached_models[i], cpv_chunk, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
-        push!(tasks, task)
-    end
+    for (row_ind,cp) in enumerate(codon_param_vec)
+        alpha = cp[1]
+        omegas = cp[2:end]
+        tagged_models = N_Omegas_model_func(cached_model, tags,omegas,alpha,GTRmat,F3x4_freqs, code)
 
-    # Wait for all tasks to finish
-    foreach(wait, tasks)
+        felsenstein!(tree,tagged_models)
+        #This combine!() is needed because the current site_LLs function applies to a partition
+        #And after a felsenstein pass, you don't have the eq freqs factored in.
+        #We could make a version of log_likelihood() that returns the partitions instead of just the sum
+        combine!.(tree.message,tree.parent_message)
+
+        log_con_lik_matrix[row_ind,:] .= MolecularEvolution.site_LLs(tree.message[1]) #Check that these grab the scaling constants as well!
+        verbosity > 0 && if mod(row_ind,500)==1
+            print(round(100*row_ind/length(codon_param_vec)),"% ")
+            flush(stdout)
+        end
+    end
+    alpha = codon_param_vec[1][1]
+    o = codon_param_vec[1][2]
 
     verbosity > 0 && println()
 
@@ -274,7 +280,39 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
-function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 1, foreground_grid = 6, background_grid = 4)
+function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
+    cached_models = [MG94_cacher(code) for _ = 1:nthreads]
+    trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
+    println(Base.summarysize(tree) / (1024^2), " MB")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+
+    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
+    @show length(cpv_chunks)
+    tasks = []
+    for (i, cpv_chunk) in enumerate(cpv_chunks)
+        # Spawn the task and add it to the array
+        task = Threads.@spawn do_subgrid!(trees[i], cached_models[i], cpv_chunk, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
+        push!(tasks, task)
+    end
+
+    # Wait for all tasks to finish
+    foreach(wait, tasks)
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
+    println(Base.summarysize(cached_models) / (1024^2), " MB")
+    verbosity > 0 && println()
+
+    con_lik_matrix = zeros(size(log_con_lik_matrix));
+    site_scalers = maximum(log_con_lik_matrix, dims = 1);
+    for i in 1:num_sites
+        con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
+    end
+
+    return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
+end
+
+function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     MolecularEvolution.set_node_indices!(tree)
     cached_model = MG94_cacher(code)
 
@@ -348,10 +386,10 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
-function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites; verbosity = 1, foreground_grid = 6, background_grid = 4)
+function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     MolecularEvolution.set_node_indices!(tree)
-    @time trees = [tree, [deepcopy(tree) for _ = 1:(Threads.nthreads() - 1)]...]
-    cached_models = [MG94_cacher(code) for _ = 1:Threads.nthreads()]
+    @time trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
+    cached_models = [MG94_cacher(code) for _ = 1:nthreads]
     @time nodelists = [getnodelist(tree) for tree in trees]
     
     pure_subclades, _, _ = getpuresubclades(tree, tags)
@@ -378,7 +416,7 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
             nodelist[nodeindex].parent = nothing
         end
 
-        aso_chunks = Iterators.partition(alpha_and_single_omega_grid, max(1, ceil(Int, length(alpha_and_single_omega_grid) / Threads.nthreads())))
+        aso_chunks = Iterators.partition(alpha_and_single_omega_grid, max(1, ceil(Int, length(alpha_and_single_omega_grid) / nthreads)))
         tasks = []
         for (i, aso_chunk) in enumerate(aso_chunks)
             # Spawn the task and add it to the array
@@ -406,7 +444,7 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
 
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
-    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / Threads.nthreads())))
+    cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
     tasks = []
     for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
