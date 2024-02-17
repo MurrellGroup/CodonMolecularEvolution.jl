@@ -31,6 +31,19 @@ function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
     return n::FelNode -> [model]
 end
 
+#Precalculates the DiagonalizedCTMC for all unique alpha and beta pairs and puts them in the cached model. Used in the parallel versions.
+function precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
+    if is_background
+        unique_omega_grid = unique(vcat(omegagrid, background_omega_grid))
+    else
+        unique_omega_grid = omegagrid
+    end
+    for alpha in alphagrid
+        for omega in unique_omega_grid
+            cached_model(alpha, alpha*omega, GTRmat, F3x4_freqs)
+        end
+    end
+end
 """
     getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=FelNode[])
 
@@ -282,7 +295,9 @@ end
 
 function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
-    cached_models = [MG94_cacher(code) for _ = 1:nthreads]
+    cached_model = MG94_cacher(code)
+    precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
+    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
     println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     println(Base.summarysize(tree) / (1024^2), " MB")
@@ -293,14 +308,14 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     tasks = []
     for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
-        task = Threads.@spawn do_subgrid!(trees[i], cached_models[i], cpv_chunk, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
+        task = Threads.@spawn do_subgrid!(trees[i], cached_model, cpv_chunk, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
         push!(tasks, task)
     end
 
     # Wait for all tasks to finish
     foreach(wait, tasks)
     println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
-    println(Base.summarysize(cached_models) / (1024^2), " MB")
+    println(Base.summarysize(cached_model) / (1024^2), " MB")
     verbosity > 0 && println()
 
     con_lik_matrix = zeros(size(log_con_lik_matrix));
@@ -389,7 +404,8 @@ end
 function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     MolecularEvolution.set_node_indices!(tree)
     @time trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
-    cached_models = [MG94_cacher(code) for _ = 1:nthreads]
+    cached_model = MG94_cacher(code)
+    precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
     @time nodelists = [getnodelist(tree) for tree in trees]
     
     pure_subclades, _, _ = getpuresubclades(tree, tags)
@@ -420,7 +436,7 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
         tasks = []
         for (i, aso_chunk) in enumerate(aso_chunks)
             # Spawn the task and add it to the array
-            task = Threads.@spawn get_messages_for_aso_pairs(nodelists[i][nodeindex], cached_models[i], aso_chunk, GTRmat, F3x4_freqs, code)
+            task = Threads.@spawn get_messages_for_aso_pairs(nodelists[i][nodeindex], cached_model, aso_chunk, GTRmat, F3x4_freqs, code)
             push!(tasks, task)
         end
 
@@ -448,7 +464,7 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
     tasks = []
     for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
-        task = Threads.@spawn do_subgrid!(trees[i], cached_models[i], cpv_chunk, i, pure_subclades, nodelists, cached_messages, cached_tag_inds, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
+        task = Threads.@spawn do_subgrid!(trees[i], cached_model, cpv_chunk, i, pure_subclades, nodelists, cached_messages, cached_tag_inds, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
         push!(tasks, task)
     end
 

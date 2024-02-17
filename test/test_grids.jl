@@ -23,16 +23,21 @@ function test_grids(dir)
     @show alphagrid, omegagrid, background_omega_grid
     grid, nthreads = CodonMolecularEvolution.choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
     @show grid, nthreads
+    num_taxa, num_sites, purity_ratio = length(getleaflist(tree)), tree.message[1].sites, CodonMolecularEvolution.get_purity_info(tree, tags, num_groups)[1]
     if dir == "./test/data/Ace2_no_background/"
         println("Precompiling...")
+        tree_ts = deepcopy(tree)
         tree_tsp = deepcopy(tree)
 
         #Force compilation once
         log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+        CodonMolecularEvolution.difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+
+        log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
         CodonMolecularEvolution.difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
     
         log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_ts, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
-        CodonMolecularEvolution.difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+        CodonMolecularEvolution.difFUBAR_grid_treesurgery(tree_ts, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
 
         log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_tsp, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
         CodonMolecularEvolution.difFUBAR_grid_treesurgery_and_parallel(tree_tsp, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
@@ -47,9 +52,7 @@ function test_grids(dir)
     (con_lik_matrix_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_parallel, bytes_difFUBAR_parallel = @timed CodonMolecularEvolution.difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
     
     log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
-    purity_ratio, num_omega_clades, num_background_omega_clades = CodonMolecularEvolution.get_purity_info(tree, tags, num_groups)
-    
-    (con_lik_matrix_treesurgery, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery = @timed CodonMolecularEvolution.difFUBAR_grid_treesurgery(tree_ts, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+    (con_lik_matrix_treesurgery, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery = @timed CodonMolecularEvolution.difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
 
     log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_tsp, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
     (con_lik_matrix_treesurgery_and_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel = @timed CodonMolecularEvolution.difFUBAR_grid_treesurgery_and_parallel(tree_tsp, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
@@ -58,8 +61,8 @@ function test_grids(dir)
     @assert con_lik_matrix_baseline == con_lik_matrix_treesurgery
     @assert con_lik_matrix_baseline == con_lik_matrix_treesurgery_and_parallel
 
-    f(time::Float64, bytes::Int64) = string(round(time, digits=4)) * "s, " * string(round(bytes / 10^6, digits=4)) * " M allocs"
-    [f(timed_difFUBAR_baseline, bytes_difFUBAR_baseline), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery), f(timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel)], length(getleaflist(tree)), tree.message[1].sites, CodonMolecularEvolution.get_purity_info(tree, tags, num_groups)[1]
+    f(time::Float64, bytes::Int64) = string(round(time, sigdigits=4)) * "s, " * string(round(bytes / 10^6, sigdigits=4)) * " M allocs"
+    [f(timed_difFUBAR_baseline, bytes_difFUBAR_baseline), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery), f(timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel)], num_taxa, num_sites, purity_ratio
 end
 
 dir_outer = "./test/data"
@@ -68,18 +71,18 @@ timings = Matrix{String}(undef, n, 4)
 num_sites_vec = Vector{Int64}(undef, n)
 num_taxa_vec = Vector{Int64}(undef, n)
 dir_names = Vector{String}(undef, n)
-pure_ratio_vec = Vector{Float64}(undef, n)
+purity_ratio_vec = Vector{Float64}(undef, n)
 
 for (i, dir_name) in enumerate(readdir(dir_outer))
     dir = joinpath(dir_outer, dir_name, "")
-    timing, num_taxa, num_sites, pure_ratio = test_grids(dir)
+    timing, num_taxa, num_sites, purity_ratio = test_grids(dir)
     timings[i, :] = timing
     num_taxa_vec[i] = num_taxa
     num_sites_vec[i] = num_sites
     dir_names[i] = dir_name
-    pure_ratio_vec[i] = pure_ratio
+    purity_ratio_vec[i] = purity_ratio
 end
 
-df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, pure_ratio_vec, timings), [:test_case, :num_taxa, :num_sites, :purity_ratio, :difFUBAR, :difFUBAR_parallel, :difFUBAR_treesurgery, :difFUBAR_treesurgery_and_parallel])
+df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, purity_ratio_vec, timings), [:test_case, :num_taxa, :num_sites, :purity_ratio, :difFUBAR, :difFUBAR_parallel, :difFUBAR_treesurgery, :difFUBAR_treesurgery_and_parallel])
 CSV.write("./test/timings-t16-BLAS-1-ParvoVP-included.csv", df) 
 exit()
