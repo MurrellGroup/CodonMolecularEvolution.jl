@@ -1,6 +1,6 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, Measures, Compose, PyPlot, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling#, LinearAlgebra
+using FASTX, MolecularEvolution, Measures, Compose, PyPlot, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra
 
 include("shared/shared.jl")
 include("difFUBAR/difFUBAR.jl")
