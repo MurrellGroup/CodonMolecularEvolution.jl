@@ -110,6 +110,42 @@ function extra_mem_from_caching(num_sites, alphagrid, omegagrid, background_omeg
     return total_bytes_from_caching
 end
 
+function choose_grid_and_threads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
+    purity_ratio, num_omega_clades, num_background_omega_clades = get_purity_info(tree, tags, num_groups)
+    extra_mem = extra_mem_from_caching(num_sites, alphagrid, omegagrid, background_omega_grid, num_omega_clades, num_background_omega_clades, code)
+    
+    tree_size = Base.summarysize(tree) #Estimates (often overestimates) memory usage of one tree
+    free_memory = Sys.free_memory()
+    max_threads = min(free_memory ÷ tree_size, Threads.nthreads(), Sys.CPU_THREADS ÷ 2)
+    tree_surgery_is_considered = extra_mem < free_memory && purity_ratio > 0.1 #Trying not to introduce too much overhead if the speedup isn't significant
+    parallelization_is_considered = max_threads > 1
+
+    if !(tree_surgery_is_considered || parallelization_is_considered)
+        return difFUBAR_grid, 1
+    elseif !tree_surgery_is_considered
+        return difFUBAR_grid_parallel, max_threads
+    elseif !parallelization_is_considered
+        return difFUBAR_grid_treesurgery, 1
+    end
+    #From now on, we know that both tree-surgery and parallelization are considered
+    if extra_mem + tree_size * max_threads < free_memory
+        return difFUBAR_grid_treesurgery_and_parallel, max_threads
+    end
+    if purity_ratio < 0.5 #In this case, maximum speedup from tree-surgery would be 2x, but we know that max_threads > 1
+        return difFUBAR_grid_parallel, max_threads
+    end
+    max_threads_for_treesurgery_and_parallel = (free_memory - extra_mem) ÷ tree_size
+    if max_threads_for_treesurgery_and_parallel > 1
+        return difFUBAR_grid_treesurgery_and_parallel, max_threads_for_treesurgery_and_parallel
+    end
+    #Now we must choose between tree surgery and parallelization
+    if 1 - purity_ratio < 1 / max_threads #Estimates and compares speedup coefficients
+        return difFUBAR_grid_treesurgery, 1
+    else
+        return difFUBAR_grid_parallel, max_threads
+    end
+end
+
 #Defines the grid used for inference.
 function gridsetup(lb, ub, num_below_one, trin, tr)
     step = (trin(1.0) - trin(lb))/num_below_one
