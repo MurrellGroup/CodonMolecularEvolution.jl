@@ -294,6 +294,8 @@ function difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
 end
 
 function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    BLAS_num_threads = BLAS.get_num_threads()
+    BLAS.set_num_threads(1) #Otherwise, BLAS threads inhibit Julia threads
     println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     cached_model = MG94_cacher(code)
     precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
@@ -323,7 +325,7 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     for i in 1:num_sites
         con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
     end
-
+    BLAS.set_num_threads(BLAS_num_threads)
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
@@ -402,6 +404,8 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
 end
 
 function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    BLAS_num_threads = BLAS.get_num_threads()
+    BLAS.set_num_threads(1) #Otherwise, BLAS threads inhibit Julia threads
     MolecularEvolution.set_node_indices!(tree)
     @time trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
     cached_model = MG94_cacher(code)
@@ -479,5 +483,6 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
         con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
     end
     println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
+    BLAS.set_num_threads(BLAS_num_threads)
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end

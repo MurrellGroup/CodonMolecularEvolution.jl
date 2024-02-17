@@ -1,7 +1,5 @@
 using MolecularEvolution, CodonMolecularEvolution, Glob, BenchmarkTools, CSV, DataFrames, LinearAlgebra
 
-BLAS.set_num_threads(1)
-
 function test_grids(dir)
     @show dir
     if length(glob(dir*"*.nex")) > 0
@@ -57,9 +55,9 @@ function test_grids(dir)
     log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree_tsp, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
     (con_lik_matrix_treesurgery_and_parallel, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel = @timed CodonMolecularEvolution.difFUBAR_grid_treesurgery_and_parallel(tree_tsp, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
     
-    @assert con_lik_matrix_baseline == con_lik_matrix_parallel
-    @assert con_lik_matrix_baseline == con_lik_matrix_treesurgery
-    @assert con_lik_matrix_baseline == con_lik_matrix_treesurgery_and_parallel
+    @assert isapprox(con_lik_matrix_baseline,con_lik_matrix_parallel)
+    @assert isapprox(con_lik_matrix_baseline,con_lik_matrix_treesurgery)
+    @assert isapprox(con_lik_matrix_baseline,con_lik_matrix_treesurgery_and_parallel)
 
     f(time::Float64, bytes::Int64) = string(round(time, sigdigits=4)) * "s, " * string(round(bytes / 10^6, sigdigits=4)) * " M allocs"
     [f(timed_difFUBAR_baseline, bytes_difFUBAR_baseline), f(timed_difFUBAR_parallel, bytes_difFUBAR_parallel), f(timed_difFUBAR_treesurgery, bytes_difFUBAR_treesurgery), f(timed_difFUBAR_treesurgery_and_parallel, bytes_difFUBAR_treesurgery_and_parallel)], num_taxa, num_sites, purity_ratio
@@ -84,5 +82,5 @@ for (i, dir_name) in enumerate(readdir(dir_outer))
 end
 
 df = DataFrame(hcat(dir_names, num_taxa_vec, num_sites_vec, purity_ratio_vec, timings), [:test_case, :num_taxa, :num_sites, :purity_ratio, :difFUBAR, :difFUBAR_parallel, :difFUBAR_treesurgery, :difFUBAR_treesurgery_and_parallel])
-CSV.write("./test/timings-t16-BLAS-1-ParvoVP-included.csv", df) 
+CSV.write("./test/timings-t18", df) 
 exit()
