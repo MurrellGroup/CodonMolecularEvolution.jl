@@ -134,7 +134,7 @@ function choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, 
     parallelization_is_considered = max_nthreads > 1
 
     if !(tree_surgery_is_considered || parallelization_is_considered)
-        return difFUBAR_grid, 1
+        return difFUBAR_grid_baseline, 1
     elseif !tree_surgery_is_considered
         return difFUBAR_grid_parallel, max_nthreads
     elseif !parallelization_is_considered
