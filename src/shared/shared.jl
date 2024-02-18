@@ -100,7 +100,6 @@ function replace_newick_tags(treestr)
     pattern = r"\{([^}]+)\}"
     unique_tags = Set{String}()
     for match in eachmatch(pattern, treestr)
-        println(match)
         push!(unique_tags, match.match)
     end
     unique_tags = collect(unique_tags)
