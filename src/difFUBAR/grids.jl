@@ -128,8 +128,14 @@ function choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, 
     extra_mem = extra_mem_from_caching(num_sites, alphagrid, omegagrid, background_omega_grid, num_omega_clades, num_background_omega_clades, code)
     
     tree_size = Base.summarysize(tree) #Estimates (often overestimates) memory usage of one tree
-    free_memory = Sys.free_memory()
-    max_nthreads = Int(min(free_memory ÷ tree_size, Threads.nthreads(), Sys.CPU_THREADS ÷ 2))
+    if Sys.isapple()
+        free_memory = Sys.total_memory() - (parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) * 1024) #Assumes that other processes aren't using a lot of RAM
+        optimal_nthreads_for_system = Sys.CPU_THREADS #Only counts performance cores
+    else
+        free_memory = Sys.free_memory()
+        optimal_nthreads_for_system = Sys.CPU_THREADS ÷ 2
+    end
+    max_nthreads = Int(min(free_memory ÷ tree_size, Threads.nthreads(), optimal_nthreads_for_system))
     tree_surgery_is_considered = extra_mem < free_memory && purity_ratio > 0.1 #Trying not to introduce too much overhead if the speedup isn't significant
     parallelization_is_considered = max_nthreads > 1
 
