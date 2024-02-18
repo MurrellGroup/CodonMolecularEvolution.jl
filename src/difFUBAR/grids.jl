@@ -296,17 +296,12 @@ end
 function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     BLAS_num_threads = BLAS.get_num_threads()
     BLAS.set_num_threads(1) #Otherwise, BLAS threads inhibit Julia threads
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     cached_model = MG94_cacher(code)
     precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
-    println(Base.summarysize(tree) / (1024^2), " MB")
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
-    @show length(cpv_chunks)
     tasks = []
     for (i, cpv_chunk) in enumerate(cpv_chunks)
         # Spawn the task and add it to the array
@@ -316,8 +311,6 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
 
     # Wait for all tasks to finish
     foreach(wait, tasks)
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
-    println(Base.summarysize(cached_model) / (1024^2), " MB")
     verbosity > 0 && println()
 
     con_lik_matrix = zeros(size(log_con_lik_matrix));
@@ -341,34 +334,27 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
 
     cached_messages = Dict()
     cached_tag_inds = Dict()
-    model_time = 0
-    copy_time = 0
-    println("Preprune", "RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     for x in pure_subclades
-        @time begin
-            tag_ind_below = model_ind(x.children[1].name, tags)
-            nodeindex = x.nodeindex
-            cached_tag_inds[nodeindex] = tag_ind_below
-            if tag_ind_below <= num_groups
-                alpha_and_single_omega_grid = alpha_and_single_omega_grids["Omega"]
-            else
-                alpha_and_single_omega_grid = alpha_and_single_omega_grids["OmegaBackground"]
-            end
-            cached_messages[nodeindex] = Dict()
-            parent = x.parent
-            x.parent = nothing
-            for (alpha, omega) in alpha_and_single_omega_grid
-                model_time += @elapsed model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
-                felsenstein!(x, model)
-                copy_time += @elapsed cached_messages[nodeindex][(alpha, omega)] = deepcopy(x.message)
-            end
-            x.parent = parent
-            x.children = FelNode[]
+        tag_ind_below = model_ind(x.children[1].name, tags)
+        nodeindex = x.nodeindex
+        cached_tag_inds[nodeindex] = tag_ind_below
+        if tag_ind_below <= num_groups
+            alpha_and_single_omega_grid = alpha_and_single_omega_grids["Omega"]
+        else
+            alpha_and_single_omega_grid = alpha_and_single_omega_grids["OmegaBackground"]
         end
+        cached_messages[nodeindex] = Dict()
+        parent = x.parent
+        x.parent = nothing
+        for (alpha, omega) in alpha_and_single_omega_grid
+            model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
+            felsenstein!(x, model)
+            cached_messages[nodeindex][(alpha, omega)] = deepcopy(x.message)
+        end
+        x.parent = parent
+        x.children = FelNode[]
     end
-    println("Postprune", "RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
-    @time @show model_time copy_time Base.summarysize(cached_messages) / (1024^2) "mb" length(pure_subclades) Base.summarysize(cached_model) / (1024^2) "mb"
-    #return pure_subclades, cached_messages, cached_tag_inds
+    
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
@@ -407,10 +393,10 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
     BLAS_num_threads = BLAS.get_num_threads()
     BLAS.set_num_threads(1) #Otherwise, BLAS threads inhibit Julia threads
     MolecularEvolution.set_node_indices!(tree)
-    @time trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
+    trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
     cached_model = MG94_cacher(code)
     precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
-    @time nodelists = [getnodelist(tree) for tree in trees]
+    nodelists = [getnodelist(tree) for tree in trees]
     
     pure_subclades, _, _ = getpuresubclades(tree, tags)
 
@@ -445,7 +431,7 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
         end
 
         # Wait for all tasks to finish and collect their return values
-        @time chunks_of_cached_messages = [fetch(task) for task in tasks];
+        chunks_of_cached_messages = [fetch(task) for task in tasks];
 
         # Merge all the returned Dicts, and put it in the big Dict of messages
         cached_messages[nodeindex] = merge(chunks_of_cached_messages...)
@@ -482,7 +468,6 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
     for i in 1:num_sites
         con_lik_matrix[:,i] .= exp.(log_con_lik_matrix[:,i] .- site_scalers[i])
     end
-    println("RSS: ", parse(Int, chomp(read(`ps -o rss= -p $(getpid())`, String))) / 1024, " MB")
     BLAS.set_num_threads(BLAS_num_threads)
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
