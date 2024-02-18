@@ -20,7 +20,7 @@ function benchmark_dataset(dir, versions_option, t)
     if t > 0
         nthreads = t
     end
-
+    @show nameof(heuristic_pick)
     grid_versions = [difFUBAR_grid_baseline, difFUBAR_grid_parallel, difFUBAR_grid_treesurgery, difFUBAR_grid_treesurgery_and_parallel]
     option_map = Dict(1 => [heuristic_pick], 2 => [grid_versions[1]], 3 => [grid_versions[1], heuristic_pick], 4 => grid_versions)
     grid_versions_to_run = option_map[versions_option]
