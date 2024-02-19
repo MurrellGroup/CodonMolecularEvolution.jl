@@ -65,7 +65,7 @@ function benchmark_dataset(dir, versions_option, t)
 end
 
 """
-    benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Integer=0, data=1:5)
+    CodonMolecularEvolution.benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Integer=0, data=1:5)
 Benchmarks different implementations of the difFUBAR_grid algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file.
 - `benchmark_name` is the filepath to where the benchmark will be saved, if exports
 - `versions_option` have 4 different options:
