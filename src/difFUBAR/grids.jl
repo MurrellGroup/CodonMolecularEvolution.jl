@@ -135,7 +135,7 @@ function choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, 
         free_memory = Sys.free_memory()
         optimal_nthreads_for_system = Sys.CPU_THREADS ÷ 2
     end
-    max_nthreads = Int(min(free_memory ÷ tree_size, Threads.nthreads(), optimal_nthreads_for_system))
+    max_nthreads = Int(min(free_memory ÷ tree_size + 1, Threads.nthreads(), optimal_nthreads_for_system))
     tree_surgery_is_considered = extra_mem < free_memory && purity_ratio > 0.1 #Trying not to introduce too much overhead if the speedup isn't significant
     parallelization_is_considered = max_nthreads > 1
 
@@ -153,7 +153,7 @@ function choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, 
     if purity_ratio < 0.5 #In this case, maximum speedup from tree-surgery would be 2x, but we know that max_nthreads > 1
         return difFUBAR_grid_parallel, max_nthreads
     end
-    max_nthreads_for_treesurgery_and_parallel = Int((free_memory - extra_mem) ÷ tree_size)
+    max_nthreads_for_treesurgery_and_parallel = Int((free_memory - extra_mem) ÷ tree_size) + 1
     if max_nthreads_for_treesurgery_and_parallel > 1
         return difFUBAR_grid_treesurgery_and_parallel, max_nthreads_for_treesurgery_and_parallel
     end
