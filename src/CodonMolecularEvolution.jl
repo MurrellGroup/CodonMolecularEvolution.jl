@@ -5,7 +5,7 @@ using FASTX, MolecularEvolution, Measures, Compose, PyPlot, StatsBase, Distribut
 include("shared/shared.jl")
 include("difFUBAR/difFUBAR.jl")
 include("difFUBAR/grids.jl")
-include("../test/benchmark_grid.jl")
+include("../test/benchmark_difFUBAR.jl")
 
 # Write your package code here.
 

@@ -1,4 +1,4 @@
-function benchmark_dataset(dir, versions_option, t)
+function benchmark_grid_on_dataset(dir, versions_option, t)
     if any(endswith(".nex"), readdir(dir))
         nex_path = joinpath(dir, first(filter(endswith(".nex"), readdir(dir))))
         treestr, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree(nex_path)
@@ -144,7 +144,7 @@ function benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Inte
         end
         @show dataset
         dir = joinpath(data_dir, dataset)
-        timing, num_taxa, num_sites, purity_ratio, nthreads, heuristic_pick, versions_ran = benchmark_dataset(dir, versions_option, t)
+        timing, num_taxa, num_sites, purity_ratio, nthreads, heuristic_pick, versions_ran = benchmark_grid_on_dataset(dir, versions_option, t)
         for (time_and_bytes, version) in zip(timing, versions_ran)
             timings[i, version_map[version]] = time_and_bytes
         end
@@ -164,7 +164,8 @@ end
 
 """
     CodonMolecularEvolution.benchmark_global_fit(benchmark_name; exports=true, data=1:5)
-Benchmarks different implementations of the difFUBAR_global_fit algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file. Uses the heuristic top pick to generate con lik matrices.
+Benchmarks different implementations of the difFUBAR_global_fit algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file. 
+Uses the heuristic top pick to generate con lik matrices. Compares difference in con lik matrices.
 - `benchmark_name` is the filepath to where the benchmark will be saved, if exports
 - `data` is the range/vector of datasets to run the benchmark on. By default, this is 1:5. These are the enumerated datasets:
     - 1. Ace2nobackground
