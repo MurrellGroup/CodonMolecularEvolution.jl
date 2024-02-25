@@ -203,7 +203,7 @@ function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
         avg_diffs[i] = avg_diff
     end
 
-    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :difFUBAR_global_fit_2steps, :max_diff, :avg_diff])
+    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :global_fit_2steps, :max_diff, :avg_diff])
     println(df)
     exports && CSV.write(benchmark_name*".csv", df);
 end
