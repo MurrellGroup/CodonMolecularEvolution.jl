@@ -64,6 +64,44 @@ function benchmark_dataset(dir, versions_option, t)
     map(x -> f(x...), times_and_bytes), num_taxa, num_sites, purity_ratio, nthreads, nameof(heuristic_pick), grid_versions_to_run
 end
 
+function benchmark_global_fit_on_dataset(dir)
+    if any(endswith(".nex"), readdir(dir))
+        nex_path = joinpath(dir, first(filter(endswith(".nex"), readdir(dir))))
+        treestr, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree(nex_path)
+    elseif any(endswith(".nwk"), readdir(dir))
+        nwk_path = joinpath(dir, first(filter(endswith(".nwk"), readdir(dir))))
+        treestring_group_labeled, treestr, group_tags, tags, tag_colors = import_grouped_label_tree(nwk_path)
+    end
+    fasta_path = joinpath(dir, first(filter(endswith(".fasta"), readdir(dir))))
+    analysis_name = ""
+
+    seqnames, seqs = read_fasta(fasta_path)
+
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestr, tags, tag_colors, exports=false, verbosity=0)
+    code = MolecularEvolution.universal_code
+    global_fits = [difFUBAR_global_fit, difFUBAR_global_fit_2steps]
+    trees = [tree, deepcopy(tree)]
+    con_lik_matrices = []
+    times_and_bytes = []
+    local_vars = []
+    for (tree,global_fit) in zip(trees,global_fits)
+        (tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0) #60s
+        @show GTRmat
+
+        push!(local_vars, (tree, GTRmat, F3x4_freqs))
+        push!(times_and_bytes, (timed_global_fit, bytes_global_fit))
+    end
+    
+    for (tree, GTRmat, F3x4_freqs) in local_vars
+        log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+        heuristic_pick, nthreads = choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
+        con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = heuristic_pick(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+        push!(con_lik_matrices, con_lik_matrix)
+    end
+
+    f(time::Float64, bytes::Int64) = string(round(time, sigdigits=4)) * "s, " * string(round(bytes / 10^6, sigdigits=4)) * " M allocs"
+    return map(x -> f(x...), times_and_bytes), maximum(abs.(con_lik_matrices[1] - con_lik_matrices[2])), sum(abs.(con_lik_matrices[1] - con_lik_matrices[2])) / length(con_lik_matrices[1])
+end
 """
     CodonMolecularEvolution.benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Integer=0, data=1:5)
 Benchmarks different implementations of the difFUBAR_grid algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file.
@@ -120,6 +158,51 @@ function benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Inte
     end
 
     df = DataFrame(hcat(datasets, num_taxa_vec, num_sites_vec, purity_ratio_vec, nthreads_vec, heuristic_picks, timings)[data, :], [:dataset, :num_taxa, :num_sites, :purity_ratio, :nthreads, :heuristic_pick, :baseline, :parallel, :treesurgery, :treesurgery_and_parallel])
+    println(df)
+    exports && CSV.write(benchmark_name*".csv", df);
+end
+
+"""
+    CodonMolecularEvolution.benchmark_global_fit(benchmark_name; exports=true, data=1:5)
+Benchmarks different implementations of the difFUBAR_global_fit algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file. Uses the heuristic top pick to generate con lik matrices.
+- `benchmark_name` is the filepath to where the benchmark will be saved, if exports
+- `data` is the range/vector of datasets to run the benchmark on. By default, this is 1:5. These are the enumerated datasets:
+    - 1. Ace2nobackground
+    - 2. Ace2reallytiny
+    - 3. Ace2tiny
+    - 4. ParvoVP
+    - 5. ParvoVPregrouped
+"""
+function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
+    #Create the export directory, if required
+    splt = splitpath(benchmark_name)[1:end-1]
+    if length(splt) > 0
+        exports && mkpath(joinpath(splt))
+    end
+    nversions = 2
+    data_dir = joinpath(@__DIR__, "data")
+    n = length(readdir(data_dir))
+    timings = fill("", n, nversions)
+    max_diffs = Vector{Float64}(undef, n)
+    avg_diffs = Vector{Float64}(undef, n)
+    datasets = Vector{String}(undef, n)
+
+    version_map = Dict(difFUBAR_global_fit => 1, difFUBAR_global_fit_2steps => 2)
+
+    for (i, dataset) in enumerate(readdir(data_dir))
+        if !(i in data)
+            continue
+        end
+        @show dataset
+        dir = joinpath(data_dir, dataset)
+        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(dir)
+        timings[i, :] .= timing
+        datasets[i] = dataset
+        max_diffs[i] = max_diff
+        avg_diffs[i] = avg_diff
+    end
+
+    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :difFUBAR_global_fit_2steps, :max_diff, :avg_diff])
     println(df)
     exports && CSV.write(benchmark_name*".csv", df);
 end
