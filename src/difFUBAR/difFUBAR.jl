@@ -127,12 +127,27 @@ function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; ve
     return tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs
 end
 
-function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1)
+function difFUBAR_global_fit_2steps_BOBYQA(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1)
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
     tree, GTRmat = optimize_nuc_mus(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code)
-    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform = leaf_name_transform, genetic_code = code)
+    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta_BOBYQA(seqnames, seqs, tree, GTRmat, leaf_name_transform = leaf_name_transform, genetic_code = code)
+    rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1, not sure if I have the correct factor
+    
+    ######
+    #optionally polish branch lengths and topology
+    ######
+
+    return tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs
+end
+
+function difFUBAR_global_fit_2steps_molev(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1)
+
+    verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
+
+    tree, GTRmat = optimize_nuc_mus(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code)
+    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta_molev(seqnames, seqs, tree, GTRmat, leaf_name_transform = leaf_name_transform, genetic_code = code)
     rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1, not sure if I have the correct factor
     
     ######

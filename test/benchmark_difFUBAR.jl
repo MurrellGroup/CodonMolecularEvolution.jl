@@ -64,7 +64,7 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
     map(x -> f(x...), times_and_bytes), num_taxa, num_sites, purity_ratio, nthreads, nameof(heuristic_pick), grid_versions_to_run
 end
 
-function benchmark_global_fit_on_dataset(dir)
+function benchmark_global_fit_on_dataset(dir, versions, nversions)
     if any(endswith(".nex"), readdir(dir))
         nex_path = joinpath(dir, first(filter(endswith(".nex"), readdir(dir))))
         treestr, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree(nex_path)
@@ -79,8 +79,8 @@ function benchmark_global_fit_on_dataset(dir)
 
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestr, tags, tag_colors, exports=false, verbosity=0)
     code = MolecularEvolution.universal_code
-    global_fits = [difFUBAR_global_fit, difFUBAR_global_fit_2steps]
-    trees = [tree, deepcopy(tree)]
+    global_fits = versions
+    trees = [tree, [deepcopy(tree) for _ = 1:(nversions - 1)]...]
     con_lik_matrices = []
     times_and_bytes = []
     local_vars = []
@@ -100,7 +100,7 @@ function benchmark_global_fit_on_dataset(dir)
     end
 
     f(time::Float64, bytes::Int64) = string(round(time, sigdigits=4)) * "s, " * string(round(bytes / 10^6, sigdigits=4)) * " M allocs"
-    return map(x -> f(x...), times_and_bytes), maximum(abs.(con_lik_matrices[1] - con_lik_matrices[2])), sum(abs.(con_lik_matrices[1] - con_lik_matrices[2])) / length(con_lik_matrices[1])
+    return map(x -> f(x...), times_and_bytes), map(x -> maximum(abs.(con_lik_matrices[1] - x)), con_lik_matrices[2:end]), map(x -> sum(abs.(con_lik_matrices[1] - x)) / length(con_lik_matrices[1]), con_lik_matrices[2:end])
 end
 """
     CodonMolecularEvolution.benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Integer=0, data=1:5)
@@ -180,15 +180,14 @@ function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
     if length(splt) > 0
         exports && mkpath(joinpath(splt))
     end
-    nversions = 2
+    versions = [difFUBAR_global_fit, difFUBAR_global_fit_2steps_BOBYQA, difFUBAR_global_fit_2steps_molev]
+    nversions = length(versions)
     data_dir = joinpath(@__DIR__, "data")
     n = length(readdir(data_dir))
     timings = fill("", n, nversions)
-    max_diffs = Vector{Float64}(undef, n)
-    avg_diffs = Vector{Float64}(undef, n)
+    max_diffs = Vector{Vector{Float64}}(undef, n)
+    avg_diffs = Vector{Vector{Float64}}(undef, n)
     datasets = Vector{String}(undef, n)
-
-    version_map = Dict(difFUBAR_global_fit => 1, difFUBAR_global_fit_2steps => 2)
 
     for (i, dataset) in enumerate(readdir(data_dir))
         if !(i in data)
@@ -196,14 +195,14 @@ function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
         end
         @show dataset
         dir = joinpath(data_dir, dataset)
-        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(dir)
+        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(dir, versions, nversions)
         timings[i, :] .= timing
         datasets[i] = dataset
         max_diffs[i] = max_diff
         avg_diffs[i] = avg_diff
     end
 
-    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :global_fit_2steps, :max_diff, :avg_diff])
+    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :global_fit_2steps_BOBYQA, :global_fit_2steps_molev, :max_diff, :avg_diff])
     println(df)
     exports && CSV.write(benchmark_name*".csv", df);
 end
