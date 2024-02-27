@@ -260,63 +260,8 @@ function optimize_nuc_mus(seqnames, seqs, tree; leaf_name_transform=x -> x, gene
     return tree, GTRmat
 end
 
-function optimize_codon_alpha_and_beta_BOBYQA(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
-    #Now we optimize alpha and beta rates using a codon model
-    #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
-    f3x4 = MolecularEvolution.count_F3x4(seqs)
-    eq_freqs = MolecularEvolution.F3x4_eq_freqs(f3x4)
 
-    #Set up a codon partition (will default to Universal genetic code)
-    initial_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
-    initial_partition.state .= eq_freqs
-    populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
-
-    function build_model_vec(alpha, beta; F3x4=f3x4)
-        #Need to pass through genetic code here!
-        #If you run into numerical issues with DiagonalizedCTMC, switch to GeneralCTMC instead
-        return GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
-    end
-
-    function objective(alpha=1, beta=1; tree=tree, eq_freqs=eq_freqs)
-        return -log_likelihood!(tree, build_model_vec(alpha, beta))
-    end
-    alpha, beta = 1.0, 1.0
-    num_1d_optims = 3 #We'll do this many 1D optimizations, first for alpha, then beta, then alpha again and so forth
-    high_tol = 1e-4
-    low_tol = 1e-7
-    for i in 1:num_1d_optims
-        isodd = i % 2 == 1
-        initial_param = positive(ones(1)) #rate must be non-negative
-        flat_initial_param, unflatten = value_flatten(initial_param) #See ParameterHandling.jl docs
-        num_params = length(flat_initial_param)
-    
-        opt = Opt(:LN_BOBYQA, num_params)
-        if isodd
-            min_objective!(opt, (x, y) -> objective(first(unflatten(x)), beta))
-        else
-            min_objective!(opt, (x, y) -> objective(alpha, first(unflatten(x))))
-        end
-        lower_bounds!(opt, [-5.0 for i in 1:num_params])
-        upper_bounds!(opt, [5.0 for i in 1:num_params])
-        if i == num_1d_optims
-            xtol_rel!(opt, low_tol)
-            _, mini, _ = NLopt.optimize(opt, [alpha])
-        else
-            xtol_rel!(opt, high_tol)
-            _, mini, _ = NLopt.optimize(opt, flat_initial_param)
-        end
-        if isodd
-            alpha = first(unflatten(mini))
-        else
-            beta = first(unflatten(mini))
-        end
-    end
-
-    #tree, alpha, beta, F3x4, eq_freqs
-    return tree, alpha, beta, f3x4, eq_freqs
-end
-
-function optimize_codon_alpha_and_beta_molev(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
+function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
     #Now we optimize alpha and beta rates using a codon model
     #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
     f3x4 = MolecularEvolution.count_F3x4(seqs)
