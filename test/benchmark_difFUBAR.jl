@@ -64,7 +64,49 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
     map(x -> f(x...), times_and_bytes), num_taxa, num_sites, purity_ratio, nthreads, nameof(heuristic_pick), grid_versions_to_run
 end
 
-function benchmark_global_fit_on_dataset(dir, versions, nversions)
+function tabulate_global_fit_version(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid)
+    grid_size, num_sites = size(alloc_grid)
+
+    r(s) = round(s,digits = 4);
+
+    detected_sites = Int64[]
+    detections = Vector{Float64}[] #legacy name - now includes all 4 "relevant" site posteriors
+    param_means = Vector{Float64}[]
+
+    ω1 = [c[2] for c in codon_param_vec];
+    ω2 = [c[3] for c in codon_param_vec];
+    alphas = [c[1] for c in codon_param_vec];
+    ω1_greater_filt = ω1 .> ω2;
+    ω2_greater_filt = ω2 .> ω1;
+    ω1_pos_filt = ω1 .> 1.0;
+    ω2_pos_filt = ω2 .> 1.0;
+
+    for site in 1:num_sites
+        ω1_greater_posterior = sum(alloc_grid[ω1_greater_filt,site])/sum(alloc_grid[:,site])
+        ω2_greater_posterior = sum(alloc_grid[ω2_greater_filt,site])/sum(alloc_grid[:,site])
+        ω1_pos_posterior = sum(alloc_grid[ω1_pos_filt,site])/sum(alloc_grid[:,site])
+        ω2_pos_posterior = sum(alloc_grid[ω2_pos_filt,site])/sum(alloc_grid[:,site])
+        detecs = [ω1_greater_posterior,ω2_greater_posterior,ω1_pos_posterior,ω2_pos_posterior]
+        
+        site_counts_ω1 = collapse_counts(ω1,alloc_grid[:,site], cases = omegagrid)
+        site_counts_ω2 = collapse_counts(ω2,alloc_grid[:,site], cases = omegagrid)
+        site_counts_alphas = collapse_counts(alphas,alloc_grid[:,site], cases = alphagrid)
+        
+        mean_alpha = sum(site_counts_alphas .* alphagrid)
+        mean_ω1 = sum(site_counts_ω1 .* omegagrid)
+        mean_ω2 = sum(site_counts_ω2 .* omegagrid)
+        
+        push!(detections,detecs)
+        push!(param_means,[mean_alpha,mean_ω1,mean_ω2])
+        
+        if maximum(detecs) > pos_thresh
+            push!(detected_sites,site)
+        end
+    end
+    return detected_sites, detections, param_means, num_sites
+end
+
+function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversions, exports)
     if any(endswith(".nex"), readdir(dir))
         nex_path = joinpath(dir, first(filter(endswith(".nex"), readdir(dir))))
         treestr, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree(nex_path)
@@ -83,20 +125,76 @@ function benchmark_global_fit_on_dataset(dir, versions, nversions)
     trees = [tree, [deepcopy(tree) for _ = 1:(nversions - 1)]...]
     con_lik_matrices = []
     times_and_bytes = []
+    if exports
+        param_means_vec = []
+        detections_vec = []
+        detected_sites_vec = []
+        pos_thresh = 0.95
+        iters = 2500
+        num_sites = 0
+    end
     local_vars = []
     for (tree,global_fit) in zip(trees,global_fits)
-        (tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0) #60s
-        @show GTRmat
+        (tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0) #60st
 
         push!(local_vars, (tree, GTRmat, F3x4_freqs))
         push!(times_and_bytes, (timed_global_fit, bytes_global_fit))
     end
-    
+
     for (tree, GTRmat, F3x4_freqs) in local_vars
         log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
         heuristic_pick, nthreads = choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
         con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = heuristic_pick(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+        if exports
+            alloc_grid,theta = difFUBAR_sample(con_lik_matrix, iters, verbosity = false)
+            detected_sites, detections, param_means, ns = tabulate_global_fit_version(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid)
+            num_sites = ns
+            push!(param_means_vec, param_means)
+            push!(detections_vec, detections)
+            push!(detected_sites_vec, detected_sites)
+        end
         push!(con_lik_matrices, con_lik_matrix)
+    end
+    if exports
+        #Plot means
+        fig, axs = subplots(2, 4, figsize = (16, 8))
+        categories = ["Alpha", "Omega1", "Omega2"]
+        for (i, cateogry) in enumerate(categories)
+            mean_slow = [p[i] for p in param_means_vec[1]]
+            mean_fast = [p[i] for p in param_means_vec[2]]
+            x = 0.0:0.01:maximum(mean_slow)
+            axs[1, i].scatter(mean_slow, mean_fast, color="blue")
+            axs[1, i].plot(x, x, color="black")
+            axs[1, i].set_xlabel("slow")
+            axs[1, i].set_ylabel("fast")
+            axs[1, i].set_title(cateogry * " means")
+            axs[1, i].set_aspect("equal")
+        end
+
+        #Plot detected sites-deviations
+        slow = detected_sites_vec[1]
+        fast = detected_sites_vec[2]
+        deviant_sites = collect(symdiff(Set(slow), Set(fast)))
+        axs[1, 4].bar(deviant_sites, ones(length(deviant_sites)), color="green")
+        axs[1, 4].set_xlabel("Site")
+        axs[1, 4].set_title("Detected sites-deviations")
+
+
+        #Plot posterior probabilities
+        categories = ["P(ω1 > ω2)", "P(ω2 > ω1)", "P(ω1 > 1)", "P(ω2 > 1)"]
+        for (i, category) in enumerate(categories)
+            slow = [p[i] for p in detections_vec[1]]
+            fast = [p[i] for p in detections_vec[2]]
+            x = 0.0:0.01:1.0
+            axs[2, i].scatter(slow, fast, color="red")
+            axs[2, i].plot(x, x, color="black")
+            axs[2, i].set_xlabel("slow")
+            axs[2, i].set_ylabel("fast")
+            axs[2, i].set_title(category * " posterior")
+            axs[2, i].set_aspect("equal")
+        end
+        tight_layout()
+        savefig(benchmark_name * "_means_and_posteriors.pdf")
     end
 
     f(time::Float64, bytes::Int64) = string(round(time, sigdigits=4)) * "s, " * string(round(bytes / 10^6, sigdigits=4)) * " M allocs"
@@ -166,7 +264,8 @@ end
     CodonMolecularEvolution.benchmark_global_fit(benchmark_name; exports=true, data=1:5)
 Benchmarks different implementations of the difFUBAR_global_fit algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file. 
 Uses the heuristic top pick to generate con lik matrices. Compares difference in con lik matrices.
-- `benchmark_name` is the filepath to where the benchmark will be saved, if exports
+If exports is true, it also runs MCMCs on the con lik matrices and plots the means and posteriors of the different versions.
+- `benchmark_name` is the filepath to where the benchmark will be saved, if exports.
 - `data` is the range/vector of datasets to run the benchmark on. By default, this is 1:5. These are the enumerated datasets:
     - 1. Ace2nobackground
     - 2. Ace2reallytiny
@@ -180,7 +279,7 @@ function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
     if length(splt) > 0
         exports && mkpath(joinpath(splt))
     end
-    versions = [difFUBAR_global_fit, difFUBAR_global_fit_2steps_BOBYQA, difFUBAR_global_fit_2steps_molev]
+    versions = [difFUBAR_global_fit, difFUBAR_global_fit_2steps]
     nversions = length(versions)
     data_dir = joinpath(@__DIR__, "data")
     n = length(readdir(data_dir))
@@ -195,14 +294,14 @@ function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
         end
         @show dataset
         dir = joinpath(data_dir, dataset)
-        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(dir, versions, nversions)
+        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(benchmark_name*dataset, dir, versions, nversions, exports)
         timings[i, :] .= timing
         datasets[i] = dataset
         max_diffs[i] = max_diff
         avg_diffs[i] = avg_diff
     end
 
-    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :global_fit_2steps_BOBYQA, :global_fit_2steps_molev, :max_diff, :avg_diff])
+    df = DataFrame(hcat(datasets, timings, max_diffs, avg_diffs)[data, :], [:dataset, :global_fit, :global_fit_2steps, :max_diff, :avg_diff])
     println(df)
     exports && CSV.write(benchmark_name*".csv", df);
 end
