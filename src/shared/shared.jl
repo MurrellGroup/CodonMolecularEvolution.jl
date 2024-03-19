@@ -259,85 +259,6 @@ function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genet
     return tree, final_params, nuc_pi
 end
 
-const invphi = 1 / MathConstants.φ
-const invphi2 = 1 / MathConstants.φ^2
-
-function brents_pq(x, w, v, fx, fw, fv)
-    #These are some values used by the SPI
-    #x_new = x + p / q
-    p = (x - v)^2 * (fx - fw) - (x - w)^2 * (fx - fv)
-    q = 2 * ((x - v) * (fx - fw) - (x - w) * (fx - fv))
-    if q > 0
-        p = -p
-    end
-    q = abs(q)
-    return p, q
-end
-
-function SPI_is_well_behaved(a, b, x, p, q, prev_prev_e, tol)
-    return (q != 0 && a < x + p / q < b && abs(p / q) < abs(prev_prev_e) / 2 && abs(prev_prev_e) > tol)
-end
-"""
-https://maths-people.anu.edu.au/~brent/pd/rpb011i.pdf
-"""
-function brents_method_minimize(f, a::Real, b::Real, transform, t::Real; ε::Real=sqrt(MolecularEvolution.eps))
-    a, b = min(a, b), max(a, b)
-    v = w = x = a + invphi2 * (b - a) #x is our best approximation
-    fv = fw = fx = f(transform(x)) #We must always have that fv >= fw >= fx (1)
-
-    e, prev_e = 0, 0 #e denotes the step we take in each cycle
-    m = (a + b) / 2
-    tol = ε * abs(x) + t
-
-    while abs(x - m) > 2*tol - (b - a) / 2
-        prev_prev_e = prev_e
-        prev_e = e
-        p, q = brents_pq(x, w, v, fx, fw, fv)
-        if SPI_is_well_behaved(a, b, x, p, q, prev_prev_e, tol)
-            #Then we do a "parabolic interpolation" step
-            e = p / q
-            u = x + e
-            if u - a < 2*tol || b - u < 2*tol #f must not be evaluated too close to a or b
-                e = x < m ? tol : -tol
-            end
-        else #We fall back to a "golden section" step
-            prev_e = x < m ? b - x : a - x #We want our prev_prev_e to inherit this value, since two GSS steps two iterations apart differ by a factor of invphi2
-            e = invphi2 * prev_e
-        end
-        if abs(e) < tol #f must not be evaluated too close to x
-            e = e > 0 ? tol : -tol
-        end
-        u = x + e
-        fu = f(transform(u))
-        #Update variables such that we satisfy (1) and discard the non-optimal interval
-        if fu <= fx
-            if u < x
-                b = x
-            else
-                a = x
-            end
-            v, fv = w, fw
-            w, fw = x, fx
-            x, fx = u, fu
-        else
-            if u < x
-                a = u
-            else
-                b = u
-            end
-            if fu <= fw || w == x
-                v, fv = w, fw
-                w, fw = u, fu
-            elseif fu <= fv || v == x || v == w
-                v, fv = u, fu
-            end
-        end
-        m = (a + b) / 2
-        tol = ε * abs(x) + t
-    end
-    return transform(x)
-end
-
 function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
     #Now we optimize alpha and beta rates using a codon model
     #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
@@ -370,7 +291,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
         isodd = i % 2 == 1
         if isodd
             alpha = brents_method_minimize(x -> -objective(x, beta), lower_bound, upper_bound, identity, high_tol)
-            @show Int(ceil(log(high_tol / (upper_bound - lower_bound)) / log(invphi)))
+            @show Int(ceil(log(high_tol / (upper_bound - lower_bound)) / log(MolecularEvolution.invphi)))
             #alpha = golden_section_maximize(x -> objective(x, beta), lower_bound, upper_bound, identity, high_tol)
             #@show alpha1, alpha
         else
