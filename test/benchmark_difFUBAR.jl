@@ -106,7 +106,7 @@ function tabulate_global_fit_version(pos_thresh, alloc_grid, codon_param_vec, al
     return detected_sites, detections, param_means, num_sites
 end
 
-function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversions, exports)
+function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversions, exports, optimize_branch_lengths)
     if any(endswith(".nex"), readdir(dir))
         nex_path = joinpath(dir, first(filter(endswith(".nex"), readdir(dir))))
         treestr, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree(nex_path)
@@ -135,7 +135,7 @@ function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversion
     end
     local_vars = []
     for (tree,global_fit) in zip(trees,global_fits)
-        (tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0) #60st
+        (tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0, optimize_branch_lengths = optimize_branch_lengths) #60st
 
         push!(local_vars, (tree, GTRmat, F3x4_freqs))
         push!(times_and_bytes, (timed_global_fit, bytes_global_fit))
@@ -261,7 +261,7 @@ function benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Inte
 end
 
 """
-    CodonMolecularEvolution.benchmark_global_fit(benchmark_name; exports=true, data=1:5)
+    CodonMolecularEvolution.benchmark_global_fit(benchmark_name; exports=true, data=1:5, optimize_branch_lengths=false)
 Benchmarks different implementations of the difFUBAR_global_fit algorithm. Results of the benchmark are printed out as a DataFrame and saved to a CSV file. 
 Uses the heuristic top pick to generate con lik matrices. Compares difference in con lik matrices.
 If exports is true, it also runs MCMCs on the con lik matrices and plots the means and posteriors of the different versions.
@@ -272,8 +272,9 @@ If exports is true, it also runs MCMCs on the con lik matrices and plots the mea
     - 3. Ace2tiny
     - 4. ParvoVP
     - 5. ParvoVPregrouped
+- `optimize_branch_lengths` is an option that can be either `true`, `false` or `"detect"`
 """
-function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
+function benchmark_global_fit(benchmark_name; exports=true, data=1:5, optimize_branch_lengths=false)
     #Create the export directory, if required
     splt = splitpath(benchmark_name)[1:end-1]
     if length(splt) > 0
@@ -294,7 +295,7 @@ function benchmark_global_fit(benchmark_name; exports=true, data=1:5)
         end
         @show dataset
         dir = joinpath(data_dir, dataset)
-        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(benchmark_name*dataset, dir, versions, nversions, exports)
+        timing, max_diff, avg_diff = benchmark_global_fit_on_dataset(benchmark_name*dataset, dir, versions, nversions, exports, optimize_branch_lengths)
         timings[i, :] .= timing
         datasets[i] = dataset
         max_diffs[i] = max_diff
