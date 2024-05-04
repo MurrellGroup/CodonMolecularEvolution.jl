@@ -196,7 +196,7 @@ function gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_gri
     end
     codon_param_vec;
     
-    num_sites = tree.message[1].sites
+    num_sites = tree.parent_message[1].partition.sites
     l = length(codon_param_vec)
     log_con_lik_matrix = zeros(l,num_sites);
     return log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites
@@ -236,7 +236,7 @@ function do_subgrid!(tree::FelNode, cached_model, cpv_chunk::Vector{Tuple{Int64,
             nodeindex = x.nodeindex
             # Get the local equivalent node to x
             y = nodelists[idx][nodeindex]
-            y.message = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
+            y.message[1].partition = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
         end
 
         felsenstein!(tree,tagged_models)
@@ -259,14 +259,15 @@ function get_messages_for_aso_pairs(pure_subclade::FelNode, cached_model, aso_ch
     for (alpha, omega) in aso_chunk
         model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
         felsenstein!(pure_subclade, model)
-        cached_messages_x[(alpha, omega)] = deepcopy(pure_subclade.message)
+        cached_messages_x[(alpha, omega)] = copy_partition(pure_subclade.message[1].partition)
+        MolecularEvolution.safe_release_partition!(pure_subclade.message[1])
     end
     return cached_messages_x
 end
 
 function difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     cached_model = MG94_cacher(code)
-    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
@@ -305,7 +306,7 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     cached_model = MG94_cacher(code)
     precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
     trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
-    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
     tasks = []
@@ -355,12 +356,14 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
         for (alpha, omega) in alpha_and_single_omega_grid
             model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
             felsenstein!(x, model)
-            cached_messages[nodeindex][(alpha, omega)] = deepcopy(x.message)
+            cached_messages[nodeindex][(alpha, omega)] = copy_partition(x.message[1].partition)
+            MolecularEvolution.safe_release_partition!(x.message[1])
         end
+        x.message[1].static = true # Later on, we don't want the partition field to be recycled
         x.parent = parent
         x.children = FelNode[]
     end
-    
+
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
@@ -368,7 +371,7 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
 
         for x in pure_subclades
             nodeindex = x.nodeindex
-            x.message = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
+            x.message[1].partition = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
         end
 
         felsenstein!(tree,tagged_models)
@@ -442,6 +445,12 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
         # Merge all the returned Dicts, and put it in the big Dict of messages
         cached_messages[nodeindex] = merge(chunks_of_cached_messages...)
 
+        # Make sure that all of these partition fields are not recycled (this must be done after fetch)
+        for j in eachindex(nodelists)
+            # Index into this pure subclade in every tree
+            nodelists[j][nodeindex].message[1].static = true
+        end
+
         for (nodelist, parent) in zip(nodelists, parents)
             nodelist[nodeindex].parent = parent
             nodelist[nodeindex].children = FelNode[]
@@ -450,11 +459,11 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
 
     GC.gc()
 
-    num_sites = tree.message[1].sites
+    num_sites = tree.parent_message[1].partition.sites
     l = length(codon_param_vec)
     log_con_lik_matrix = zeros(l,num_sites);
 
-    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
     tasks = []

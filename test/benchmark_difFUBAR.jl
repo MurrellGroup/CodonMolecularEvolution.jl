@@ -24,7 +24,7 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
     grid_versions = [difFUBAR_grid_baseline, difFUBAR_grid_parallel, difFUBAR_grid_treesurgery, difFUBAR_grid_treesurgery_and_parallel]
     option_map = Dict(1 => [heuristic_pick], 2 => [grid_versions[1]], 3 => [grid_versions[1], heuristic_pick], 4 => grid_versions)
     grid_versions_to_run = option_map[versions_option]
-    num_taxa, num_sites, purity_ratio = length(getleaflist(tree)), tree.message[1].sites, get_purity_info(tree, tags, num_groups)[1]
+    num_taxa, num_sites, purity_ratio = length(getleaflist(tree)), tree.parent_message[1].partition.sites, get_purity_info(tree, tags, num_groups)[1]
     
     if dir == joinpath(@__DIR__, "data", "Ace2_no_background")
         println("Precompiling...")
