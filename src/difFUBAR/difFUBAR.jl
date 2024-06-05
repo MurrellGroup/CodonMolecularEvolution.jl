@@ -62,7 +62,6 @@ function FUBAR_violin_plot(sites,group1_volumes,omegagrid;
     tight_layout()
 end
 
-
 """
 
 
@@ -99,7 +98,7 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags, tag_colors; ve
     p = sortperm(tags)
     tags,tag_colors = tags[p],tag_colors[p]
     push!(tag_colors,"black") #ASSUMPTION: background color is always black
-    
+
     if exports
         #Replace with Phylo.jl based plot?
         color_dict = Dict(zip(getnodelist(tree),[tag_colors[model_ind(n.name,tags)] for n in getnodelist(tree)]));
@@ -115,12 +114,42 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags, tag_colors; ve
     return tree, tags, tag_colors, analysis_name
 end
 
-function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1)
+function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1, optimize_branch_lengths = false)
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
     tree,alpha,beta,GTRmat,F3x4_freqs,eq_freqs = optimize_MG94_F3x4(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code)
 
+    ######
+    #optionally polish branch lengths and topology
+    ######
+
+    return tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs
+end
+
+function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1, optimize_branch_lengths = false)
+
+    verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
+
+    tree, nuc_mu, nuc_pi = optimize_nuc_mu(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code)
+
+    #Optionally polish branch lengths
+    if optimize_branch_lengths == true
+        tree_polish!(tree, GeneralCTMC(reversibleQ(nuc_mu, nuc_pi)), verbose=verbosity, topology=false)
+    #Detect if all branchlengths are zero or all branchlengths are the same
+    elseif optimize_branch_lengths == "detect"
+        branchlengths = [x.branchlength for x in getnodelist(tree)]
+        if all(x -> x == 0, branchlengths)
+            @warn "All branchlengths are zero"
+        elseif length(unique(branchlengths)) == 1
+            @warn "All branchlengths are the same"
+        end
+    end
+
+    GTRmat = reversibleQ(nuc_mu, ones(4))
+    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform = leaf_name_transform, genetic_code = code)
+    rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1
+    
     ######
     #optionally polish branch lengths and topology
     ######
@@ -154,7 +183,7 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, fore
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name,tags) for n in getnodelist(tree)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
 
     function add_to_each_element(vec_of_vec, elems)
