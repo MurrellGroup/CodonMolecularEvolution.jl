@@ -158,7 +158,7 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
 end
 
 #foreground_grid and background_grid control the number of categories below 1.0
-function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4, t = 0)
+function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4, version::Union{difFUBARGrid, Nothing} = nothing, t = 0)
 
     log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags; 
                                                                                                                                                     verbosity = verbosity, 
@@ -166,9 +166,10 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, fore
                                                                                                                                                     background_grid = background_grid
                                                                                                                                                     )
     heuristic_pick, nthreads = choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
-    nthreads = t > 0 ? t : nthreads
-    verbosity > 1 && println("\n$(heuristic_pick), with $(nthreads) parallel threads will be used for the grid likelihood calculations\n") #Higher level of verbosity
-    return heuristic_pick(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; 
+    t < 1 && (t = nthreads)
+    isnothing(version) && (version = heuristic_pick)
+    verbosity > 1 && println("\n$(typeof(version)), with $(t) parallel threads will be used for the grid likelihood calculations\n") #Higher level of verbosity
+    return difFUBAR_grid(version, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, t; 
                         verbosity = verbosity, 
                         foreground_grid = foreground_grid,
                         background_grid = background_grid
@@ -360,12 +361,12 @@ end
 export difFUBAR_tabulate
 
 #Must return enough to re-calculate detections etc
-function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh = 0.95, iters = 2500, verbosity = 1, exports = true, code = MolecularEvolution.universal_code, optimize_branch_lengths = false, t = 0)
+function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh = 0.95, iters = 2500, verbosity = 1, exports = true, code = MolecularEvolution.universal_code, optimize_branch_lengths = false, version::Union{difFUBARGrid, Nothing} = nothing, t = 0)
     analysis_name = outpath
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports = exports, verbosity = verbosity)
     tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity = verbosity, optimize_branch_lengths = optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code, 
-                                                                                verbosity = verbosity, foreground_grid = 6, background_grid = 4, t = t)
+                                                                                verbosity = verbosity, foreground_grid = 6, background_grid = 4, version = version, t = t)
     alloc_grid,theta = difFUBAR_sample(con_lik_matrix, iters, verbosity = verbosity)
     df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity = verbosity, exports = exports)
 

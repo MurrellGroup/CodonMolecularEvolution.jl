@@ -20,8 +20,8 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
     if t > 0
         nthreads = t
     end
-    @show nameof(heuristic_pick)
-    grid_versions = [difFUBAR_grid_baseline, difFUBAR_grid_parallel, difFUBAR_grid_treesurgery, difFUBAR_grid_treesurgery_and_parallel]
+    @show typeof(heuristic_pick)
+    grid_versions = [difFUBARBaseline(), difFUBARParallel(), difFUBARTreesurgery(), difFUBARTreesurgeryAndParallel()]
     option_map = Dict(1 => [heuristic_pick], 2 => [grid_versions[1]], 3 => [grid_versions[1], heuristic_pick], 4 => grid_versions)
     grid_versions_to_run = option_map[versions_option]
     num_taxa, num_sites, purity_ratio = length(getleaflist(tree)), tree.parent_message[1].partition.sites, get_purity_info(tree, tags, num_groups)[1]
@@ -30,13 +30,13 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
         println("Precompiling...")
         #Force compilation once
         for (i, grid) in enumerate(grid_versions_to_run)
-            if grid == difFUBAR_grid_treesurgery || grid == difFUBAR_grid_treesurgery_and_parallel
+            if grid isa difFUBARTreesurgery || grid isa difFUBARTreesurgeryAndParallel
                 tree_local = deepcopy(tree)
             else
                 tree_local = tree
             end
             log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree_local, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
-            grid(tree_local, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+            difFUBAR_grid(grid, tree_local, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
         end
         GC.gc()
     end
@@ -50,18 +50,18 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
             tree = tree_tsp
         end
         log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
-        (con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_grid, bytes_grid = @timed grid(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+        (con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds), timed_grid, bytes_grid = @timed difFUBAR_grid(grid, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
         push!(con_lik_matrices, con_lik_matrix)
         push!(times_and_bytes, (timed_grid, bytes_grid))
     end
     if versions_option > 2
         for (con_lik_matrix, grid) in zip(con_lik_matrices[2:end], grid_versions_to_run[2:end])
-            @assert isapprox(first(con_lik_matrices), con_lik_matrix) String(nameof(grid)) * " did not produce the same con_lik_matrix as the baseline version"
+            @assert isapprox(first(con_lik_matrices), con_lik_matrix) String(typeof(grid)) * " did not produce the same con_lik_matrix as the baseline version"
         end
     end
 
     f(time::Float64, bytes::Int64) = string(round(time, sigdigits=4)) * "s, " * string(round(bytes / 10^6, sigdigits=4)) * " M allocs"
-    map(x -> f(x...), times_and_bytes), num_taxa, num_sites, purity_ratio, nthreads, nameof(heuristic_pick), grid_versions_to_run
+    map(x -> f(x...), times_and_bytes), num_taxa, num_sites, purity_ratio, nthreads, typeof(heuristic_pick), grid_versions_to_run
 end
 
 function tabulate_global_fit_version(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid)
@@ -144,7 +144,7 @@ function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversion
     for (tree, GTRmat, F3x4_freqs) in local_vars
         log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
         heuristic_pick, nthreads = choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
-        con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = heuristic_pick(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
+        con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds = difFUBAR_grid(heuristic_pick, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 0, foreground_grid = 6, background_grid = 4)
         if exports
             alloc_grid,theta = difFUBAR_sample(con_lik_matrix, iters, verbosity = false)
             detected_sites, detections, param_means, ns = tabulate_global_fit_version(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid)
@@ -232,9 +232,9 @@ function benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Inte
     datasets = Vector{String}(undef, n)
     purity_ratio_vec = Vector{Float64}(undef, n)
     nthreads_vec = Vector{Int64}(undef, n)
-    heuristic_picks = Vector{Symbol}(undef, n)
+    heuristic_picks = Vector{DataType}(undef, n)
 
-    version_map = Dict(difFUBAR_grid_baseline => 1, difFUBAR_grid_parallel => 2, difFUBAR_grid_treesurgery => 3, difFUBAR_grid_treesurgery_and_parallel => 4)
+    version_map = Dict(difFUBARBaseline => 1, difFUBARParallel => 2, difFUBARTreesurgery => 3, difFUBARTreesurgeryAndParallel => 4)
 
     for (i, dataset) in enumerate(readdir(data_dir))
         if !(i in data)
@@ -244,7 +244,7 @@ function benchmark_grid(benchmark_name; exports=true, versions_option=1, t::Inte
         dir = joinpath(data_dir, dataset)
         timing, num_taxa, num_sites, purity_ratio, nthreads, heuristic_pick, versions_ran = benchmark_grid_on_dataset(dir, versions_option, t)
         for (time_and_bytes, version) in zip(timing, versions_ran)
-            timings[i, version_map[version]] = time_and_bytes
+            timings[i, version_map[typeof(version)]] = time_and_bytes
         end
 
         num_taxa_vec[i] = num_taxa
