@@ -45,66 +45,72 @@ function precalculate_models!(cached_model, alphagrid, omegagrid, background_ome
     end
 end
 """
-    getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=FelNode[])
+    getpuresubclades(tree::FelNode, tags::Vector{String})
 
-- Should usually be called on the root of the tree. Traverses the tree recursively with a depth-first search to find roots of pure subclades, presuming that nodenames have been trailed with tags.
-- To just get the pure subclades, one can run `pure_subclades, _, _ = getpuresubclades(tree, tags)`.
-
-# Arguments
-- `node`: The root of the search.
-- `tags`: A vector of tags.
-- `pure_subclades`: A vector of pure subclades. Defaults to an empty vector.
-
-# Returns
-- A tuple containing the vector of pure subclades, a boolean indicating whether the node is pure, and the index of the node's tag.
+- Should usually be called on the root of the tree. Traverses the tree iteratively with a depth-first search to find roots of pure subclades, presuming that nodenames have been trailed with tags. Returns a Vector{FelNode} with root-nodes of the pure subclades.
 """
-function getpuresubclades(node::FelNode, tags::Vector{String}, pure_subclades=FelNode[])
-    # Get the index of the node's tag
-    tag_ind_of_node = model_ind(node.name, tags)
+function getpuresubclades(tree::FelNode, tags::Vector{String})
+    pure_subclades = Vector{FelNode}()
+    node_stack = [(tree, model_ind(tree.name, tags), true)]
+    result_stack = Vector{Tuple{Bool, Int64}}() #(is_pure, tag_ind)
+    while !isempty(node_stack)
+        node, tag_ind_of_node, first_time = pop!(node_stack)
+        if !isleafnode(node)
+            if first_time
+                push!(node_stack, (node, tag_ind_of_node, false))
+                for child in node.children
+                    push!(node_stack, (child, model_ind(child.name, tags), true))
+                end
+            end
+            if !first_time
+                children_are_pure = Vector{Bool}()
+                children_tag_inds = Vector{Int64}()
 
-    # If the node is a leaf, it's pure
-    if isleafnode(node)
-        return pure_subclades, true, tag_ind_of_node
-    end
+                for _ = 1:length(node.children)
+                    #children_are_pure etc. maps directly onto node.children since we have two pop! operations (reverses order) that cancel out
+                    child_is_pure, tag_ind = pop!(result_stack)
+                    push!(children_are_pure, child_is_pure)
+                    push!(children_tag_inds, tag_ind)
+                end
 
-    children_are_pure = Vector{Bool}()
-    children_tag_inds = Vector{Int64}()
+                # Get the index of the node's first child's tag
+                tag_ind_of_first_child = first(children_tag_inds)
 
-    for child in node.children
-        pure_subclades, child_is_pure, tag_ind = getpuresubclades(child, tags, pure_subclades)
-        push!(children_are_pure, child_is_pure)
-        push!(children_tag_inds, tag_ind)
-    end
+                # This is the case where the subclade starting at node is pure
+                if all(children_are_pure) && all(x == tag_ind_of_first_child for x in children_tag_inds)
+                    if tag_ind_of_node != tag_ind_of_first_child
+                        # The purity is broken at this node
+                        push!(pure_subclades, node)
+                        push!(result_stack, (false, tag_ind_of_node))
+                        continue
+                    end
+                    # The purity is not broken at this node
+                    push!(result_stack, (true, tag_ind_of_node))
+                    continue
+                end
 
-    # Get the index of the node's first child's tag
-    tag_ind_of_first_child = first(children_tag_inds)
-
-    # This is the case where the subclade starting at node is pure
-    if all(children_are_pure) && all(x == tag_ind_of_first_child for x in children_tag_inds)
-        if tag_ind_of_node != tag_ind_of_first_child
-            # The purity is broken at this node
-            push!(pure_subclades, node)
-            return pure_subclades, false, tag_ind_of_node
+                # This is the case where some child has mixed tags or the children are pure with regards to different tags
+                for (child_is_pure, child) in zip(children_are_pure, node.children)
+                    if !child_is_pure || isleafnode(child)
+                        # We don't want to push leaves into pure_subclades
+                        continue
+                    end
+                    push!(pure_subclades, child)
+                end
+                push!(result_stack, (false, tag_ind_of_node))
+            end
+        else
+            # If the node is a leaf, it's pure
+            push!(result_stack, (true, tag_ind_of_node))
         end
-        # The purity is not broken at this node
-        return pure_subclades, true, tag_ind_of_node
     end
-
-    # This is the case where some child has mixed tags or the children are pure with regards to different tags
-    for (child_is_pure, child) in zip(children_are_pure, node.children)
-        if !child_is_pure || isleafnode(child)
-            # We don't want to push leaves into pure_subclades
-            continue
-        end
-        push!(pure_subclades, child)
-    end
-    return pure_subclades, false, tag_ind_of_node
+    return pure_subclades
 end
 
 #Calculates the ratio of nodes that are in a pure clade to total nodes in the tree (1st return value)
 #Calculates the number of pure omega and background omega clades (2nd and 3rd return values)
 function get_purity_info(tree, tags, num_groups)
-    pure_subclades, _, _ = getpuresubclades(tree, tags)
+    pure_subclades = getpuresubclades(tree, tags)
     c = 0
     for x in pure_subclades
         #The root of the pure clade is not counted
@@ -196,7 +202,7 @@ function gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_gri
     end
     codon_param_vec;
     
-    num_sites = tree.message[1].sites
+    num_sites = tree.parent_message[1].partition.sites
     l = length(codon_param_vec)
     log_con_lik_matrix = zeros(l,num_sites);
     return log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites
@@ -236,7 +242,7 @@ function do_subgrid!(tree::FelNode, cached_model, cpv_chunk::Vector{Tuple{Int64,
             nodeindex = x.nodeindex
             # Get the local equivalent node to x
             y = nodelists[idx][nodeindex]
-            y.message = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
+            y.message[1].partition = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
         end
 
         felsenstein!(tree,tagged_models)
@@ -259,14 +265,15 @@ function get_messages_for_aso_pairs(pure_subclade::FelNode, cached_model, aso_ch
     for (alpha, omega) in aso_chunk
         model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
         felsenstein!(pure_subclade, model)
-        cached_messages_x[(alpha, omega)] = deepcopy(pure_subclade.message)
+        cached_messages_x[(alpha, omega)] = copy_partition(pure_subclade.message[1].partition)
+        MolecularEvolution.safe_release_partition!(pure_subclade.message[1])
     end
     return cached_messages_x
 end
 
 function difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     cached_model = MG94_cacher(code)
-    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
@@ -305,7 +312,7 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     cached_model = MG94_cacher(code)
     precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
     trees = [tree, [deepcopy(tree) for _ = 1:(nthreads - 1)]...]
-    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
     tasks = []
@@ -332,7 +339,7 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
     MolecularEvolution.set_node_indices!(tree)
     cached_model = MG94_cacher(code)
 
-    pure_subclades, _, _ = getpuresubclades(tree, tags)
+    pure_subclades = getpuresubclades(tree, tags)
 
     if length(pure_subclades) > 0
         alpha_and_single_omega_grids = generate_alpha_and_single_omega_grids(alphagrid, omegagrid, background_omega_grid, is_background)
@@ -355,12 +362,14 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
         for (alpha, omega) in alpha_and_single_omega_grid
             model = Omega_model_func(cached_model,omega,alpha,GTRmat,F3x4_freqs,code)
             felsenstein!(x, model)
-            cached_messages[nodeindex][(alpha, omega)] = deepcopy(x.message)
+            cached_messages[nodeindex][(alpha, omega)] = copy_partition(x.message[1].partition)
+            MolecularEvolution.safe_release_partition!(x.message[1])
         end
+        x.message[1].static = true # Later on, we don't want the partition field to be recycled
         x.parent = parent
         x.children = FelNode[]
     end
-    
+
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
@@ -368,7 +377,7 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
 
         for x in pure_subclades
             nodeindex = x.nodeindex
-            x.message = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
+            x.message[1].partition = cached_messages[nodeindex][(alpha, omegas[cached_tag_inds[nodeindex]])]
         end
 
         felsenstein!(tree,tagged_models)
@@ -404,7 +413,7 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
     precalculate_models!(cached_model, alphagrid, omegagrid, background_omega_grid, is_background, GTRmat, F3x4_freqs)
     nodelists = [getnodelist(tree) for tree in trees]
     
-    pure_subclades, _, _ = getpuresubclades(tree, tags)
+    pure_subclades = getpuresubclades(tree, tags)
 
     if length(pure_subclades) > 0
         alpha_and_single_omega_grids = generate_alpha_and_single_omega_grids(alphagrid, omegagrid, background_omega_grid, is_background)
@@ -442,6 +451,12 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
         # Merge all the returned Dicts, and put it in the big Dict of messages
         cached_messages[nodeindex] = merge(chunks_of_cached_messages...)
 
+        # Make sure that all of these partition fields are not recycled (this must be done after fetch)
+        for j in eachindex(nodelists)
+            # Index into this pure subclade in every tree
+            nodelists[j][nodeindex].message[1].static = true
+        end
+
         for (nodelist, parent) in zip(nodelists, parents)
             nodelist[nodeindex].parent = parent
             nodelist[nodeindex].children = FelNode[]
@@ -450,11 +465,11 @@ function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, 
 
     GC.gc()
 
-    num_sites = tree.message[1].sites
+    num_sites = tree.parent_message[1].partition.sites
     l = length(codon_param_vec)
     log_con_lik_matrix = zeros(l,num_sites);
 
-    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.message[1].sites) conditional likelihood values (the slowest step). Currently on:")
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     cpv_chunks = Iterators.partition(enumerate(codon_param_vec), max(1, ceil(Int, length(codon_param_vec) / nthreads)))
     tasks = []

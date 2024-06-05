@@ -131,7 +131,7 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
-    tree, nuc_mu, nuc_pi = optimize_nuc_mu(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code)
+    tree, nuc_mu, nuc_pi = optimize_nuc_mu(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code, optimize_branch_lengths = optimize_branch_lengths)
 
     #Optionally polish branch lengths
     if optimize_branch_lengths == true

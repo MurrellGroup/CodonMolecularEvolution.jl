@@ -190,9 +190,11 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     eq_freqs = MolecularEvolution.F3x4_eq_freqs(f3x4)
 
     #Set up a codon partition (will default to Universal genetic code)
-    initial_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
-    initial_partition.state .= eq_freqs
+    eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
+    eq_partition.state .= eq_freqs
+    initial_partition = LazyPartition{CodonPartition}(nothing)
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+    lazyprep!(tree, [eq_partition])
 
     #We'll use the empirical F3x4 freqs, fixed MG94 alpha=1, and optimize the nuc parameters and MG94 beta
     #Note: the nuc rates are confounded with alpha
@@ -226,13 +228,19 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     return tree, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
 end
 
-function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
+function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, optimize_branch_lengths = false)
     #Optimize mu params using a nuc model, mu denotes the nucleotide mutational biases
     nuc_pi = char_proportions(seqs, MolecularEvolution.nucstring)
 
-    initial_partition = NucleotidePartition(length(seqs[1]))
-    initial_partition.state .= nuc_pi
-    populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+    eq_partition = NucleotidePartition(length(seqs[1]))
+    eq_partition.state .= nuc_pi
+    if optimize_branch_lengths == true
+        populate_tree!(tree, eq_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+    else
+        initial_partition = LazyPartition{NucleotidePartition}(nothing)
+        populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+        lazyprep!(tree, [eq_partition])
+    end
 
     initial_params = positive(ones(6)) #rates must be non-negative
 
@@ -266,9 +274,11 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     eq_freqs = MolecularEvolution.F3x4_eq_freqs(f3x4)
 
     #Set up a codon partition (will default to Universal genetic code)
-    initial_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
-    initial_partition.state .= eq_freqs
+    eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
+    eq_partition.state .= eq_freqs
+    initial_partition = LazyPartition{CodonPartition}(nothing)
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+    lazyprep!(tree, [eq_partition])
 
     function build_model_vec(alpha, beta; F3x4=f3x4)
         #Need to pass through genetic code here!
@@ -414,7 +424,7 @@ function MolecularEvolution.populate_tree!(
     if init_all_messages
         internal_message_init!(tree, starting_message)
     else
-        tree.parent_message = deepcopy(starting_message)
+        tree.parent_message = copy_message(starting_message)
     end
     name_dic = Dict(zip(names, 1:length(names)))
     for n in getleaflist(tree)
