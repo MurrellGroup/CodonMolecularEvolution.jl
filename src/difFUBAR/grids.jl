@@ -4,6 +4,11 @@ Including: the default difFUBAR_grid function as well as different speedup trick
 combinations of implementations using parallelization and memoization. Also, it contains helper functions for these.
 """
 
+struct difFUBARBaseline <: difFUBARGrid end
+struct difFUBARParallel <: difFUBARGrid end
+struct difFUBARTreesurgery <: difFUBARGrid end
+struct difFUBARTreesurgeryAndParallel <: difFUBARGrid end
+
 function add_to_each_element(vec_of_vec, elems)
     return [vcat(v,[e]) for v in vec_of_vec for e in elems]
 end
@@ -146,28 +151,28 @@ function choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, 
     parallelization_is_considered = max_nthreads > 1
 
     if !(tree_surgery_is_considered || parallelization_is_considered)
-        return difFUBAR_grid_baseline, 1
+        return difFUBARBaseline(), 1
     elseif !tree_surgery_is_considered
-        return difFUBAR_grid_parallel, max_nthreads
+        return difFUBARParallel(), max_nthreads
     elseif !parallelization_is_considered
-        return difFUBAR_grid_treesurgery, 1
+        return difFUBARTreesurgery(), 1
     end
     #From now on, we know that both tree-surgery and parallelization are considered
     if extra_mem + tree_size * max_nthreads < free_memory
-        return difFUBAR_grid_treesurgery_and_parallel, max_nthreads
+        return difFUBARTreesurgeryAndParallel(), max_nthreads
     end
     if purity_ratio < 0.5 #In this case, maximum speedup from tree-surgery would be 2x, but we know that max_nthreads > 1
-        return difFUBAR_grid_parallel, max_nthreads
+        return difFUBARParallel(), max_nthreads
     end
     max_nthreads_for_treesurgery_and_parallel = Int((free_memory - extra_mem) ÷ tree_size) + 1
     if max_nthreads_for_treesurgery_and_parallel > 1
-        return difFUBAR_grid_treesurgery_and_parallel, max_nthreads_for_treesurgery_and_parallel
+        return difFUBARTreesurgeryAndParallel(), max_nthreads_for_treesurgery_and_parallel
     end
     #Now we must choose between tree surgery and parallelization
     if 1 - purity_ratio < 1 / max_nthreads #Estimates and compares speedup coefficients
         return difFUBAR_grid_treesurgery, 1
     else
-        return difFUBAR_grid_parallel, max_nthreads
+        return difFUBARParallel(), max_nthreads
     end
 end
 
@@ -271,7 +276,7 @@ function get_messages_for_aso_pairs(pure_subclade::FelNode, cached_model, aso_ch
     return cached_messages_x
 end
 
-function difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+function difFUBAR_grid(version::difFUBARBaseline, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     cached_model = MG94_cacher(code)
     verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
@@ -306,7 +311,7 @@ function difFUBAR_grid_baseline(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
-function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+function difFUBAR_grid(version::difFUBARParallel, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     BLAS_num_threads = BLAS.get_num_threads()
     BLAS.set_num_threads(1) #Otherwise, BLAS threads inhibit Julia threads
     cached_model = MG94_cacher(code)
@@ -335,7 +340,7 @@ function difFUBAR_grid_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_li
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
-function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+function difFUBAR_grid(version::difFUBARTreesurgery, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     MolecularEvolution.set_node_indices!(tree)
     cached_model = MG94_cacher(code)
 
@@ -404,7 +409,7 @@ function difFUBAR_grid_treesurgery(tree, tags, GTRmat, F3x4_freqs, code, log_con
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
 
-function difFUBAR_grid_treesurgery_and_parallel(tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
+function difFUBAR_grid(version::difFUBARTreesurgeryAndParallel, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, nthreads; verbosity = 1, foreground_grid = 6, background_grid = 4)
     BLAS_num_threads = BLAS.get_num_threads()
     BLAS.set_num_threads(1) #Otherwise, BLAS threads inhibit Julia threads
     MolecularEvolution.set_node_indices!(tree)
