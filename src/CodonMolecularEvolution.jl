@@ -10,8 +10,9 @@ include("difFUBAR/grids.jl")
 include("../test/benchmark_difFUBAR.jl")
 
 export 
-    difFUBARBaseline
-    difFUBARParallel
-    difFUBARTreesurgery
+    difFUBARBaseline,
+    difFUBARParallel,
+    difFUBARTreesurgery,
     difFUBARTreesurgeryAndParallel
+
 end
