@@ -1,6 +1,6 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, Measures, Compose, PyPlot, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra
+using FASTX, MolecularEvolution, Measures, Compose, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra
 
 abstract type difFUBARGrid end
 
