@@ -4,7 +4,7 @@ CurrentModule = CodonMolecularEvolution
 
 # CodonMolecularEvolution
 
-Documentation for [CodonMolecularEvolution](https://github.com/murrellb/CodonMolecularEvolution.jl).
+Documentation for [CodonMolecularEvolution](https://github.com/MurrellGroup/CodonMolecularEvolution.jl).
 
 ```@index
 ```
