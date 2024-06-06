@@ -56,7 +56,7 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
     end
     if versions_option > 2
         for (con_lik_matrix, grid) in zip(con_lik_matrices[2:end], grid_versions_to_run[2:end])
-            @assert isapprox(first(con_lik_matrices), con_lik_matrix) String(typeof(grid)) * " did not produce the same con_lik_matrix as the baseline version"
+            @assert isapprox(first(con_lik_matrices), con_lik_matrix) String(nameof(typeof(grid))) * " did not produce the same con_lik_matrix as the baseline version"
         end
     end
 
