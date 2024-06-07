@@ -156,44 +156,34 @@ function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversion
         push!(con_lik_matrices, con_lik_matrix)
     end
     if exports
+        plots = []
+        titles = String[]
         #Plot means
-        fig, axs = subplots(2, 4, figsize = (16, 8))
-        categories = ["Alpha", "Omega1", "Omega2"]
-        for (i, cateogry) in enumerate(categories)
-            mean_slow = [p[i] for p in param_means_vec[1]]
-            mean_fast = [p[i] for p in param_means_vec[2]]
-            x = 0.0:0.01:maximum(mean_slow)
-            axs[1, i].scatter(mean_slow, mean_fast, color="blue")
-            axs[1, i].plot(x, x, color="black")
-            axs[1, i].set_xlabel("slow")
-            axs[1, i].set_ylabel("fast")
-            axs[1, i].set_title(cateogry * " means")
-            axs[1, i].set_aspect("equal")
+        categories = ["α", "ω1", "ω2"]
+        for (i, category) in enumerate(categories)
+            mean_codon = [p[i] for p in param_means_vec[1]]
+            mean_nuc_codon = [p[i] for p in param_means_vec[2]]
+            x = 0.0:0.01:maximum(mean_codon)
+            p = plot(x, x, color=:black, label=false, aspect_ratio=:equal)
+            scatter!( mean_codon, mean_nuc_codon, color=:blue, label=false, aspect_ratio=:equal)
+            push!(titles, category * " means")
+            push!(plots, p)
         end
-
-        #Plot detected sites-deviations
-        slow = detected_sites_vec[1]
-        fast = detected_sites_vec[2]
-        deviant_sites = collect(symdiff(Set(slow), Set(fast)))
-        axs[1, 4].bar(deviant_sites, ones(length(deviant_sites)), color="green")
-        axs[1, 4].set_xlabel("Site")
-        axs[1, 4].set_title("Detected sites-deviations")
-
 
         #Plot posterior probabilities
         categories = ["P(ω1 > ω2)", "P(ω2 > ω1)", "P(ω1 > 1)", "P(ω2 > 1)"]
+        p2 = plot(layout = (1, length(categories)), thickness_scaling = 0.5)
         for (i, category) in enumerate(categories)
-            slow = [p[i] for p in detections_vec[1]]
-            fast = [p[i] for p in detections_vec[2]]
+            codon = [p[i] for p in detections_vec[1]]
+            nuc_codon = [p[i] for p in detections_vec[2]]
             x = 0.0:0.01:1.0
-            axs[2, i].scatter(slow, fast, color="red")
-            axs[2, i].plot(x, x, color="black")
-            axs[2, i].set_xlabel("slow")
-            axs[2, i].set_ylabel("fast")
-            axs[2, i].set_title(category * " posterior")
-            axs[2, i].set_aspect("equal")
+            p = plot(x, x, color=:black, label=false, aspect_ratio=:equal)
+            scatter!(codon, nuc_codon, color=:red, label=false, aspect_ratio=:equal)
+            push!(titles, category * " posterior")
+            push!(plots, p)
         end
-        tight_layout()
+        l = @layout([° ° ° _; ° ° ° °])
+        plt = plot(plots..., layout = l, size = (800, 400), title=reshape(titles, 1, 7), plot_title="Codon vs. Nucleotide+Codon model fit", xlabel="Codon", ylabel="Nucleotide+Codon", left_margin=50px, bottom_margin=50px, thickness_scaling = 0.5)
         savefig(benchmark_name * "_means_and_posteriors.pdf")
     end
 
