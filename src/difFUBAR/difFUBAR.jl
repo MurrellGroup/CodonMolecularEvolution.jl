@@ -410,6 +410,32 @@ end
 export difFUBAR_tabulate
 
 #Must return enough to re-calculate detections etc
+export difFUBAR
+"""
+    difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; <keyword arguments>)
+
+# Arguments
+- `seqnames`
+- `seqs`
+- `treestring`
+- `tags`
+- `tag_colors`
+- `outpath`
+- `pos_thresh=0.95`: the threshold of significance for the posteriors.
+- `iters=2500`: iterations used in the Gibbs sampler.
+- `verbosity=1`: as verbosity increases, prints are added accumulatively. 
+    - 0 - no prints
+    - 1 - show current step and where output files are exported
+    - 2 - show the chosen `difFUBAR_grid` version and amount of parallel threads.
+- `exports=true`: if true, output files are exported.
+- `code=MolecularEvolution.universal_code`: the genetic code used for the analysis.
+- `optimize_branch_lengths=false`: if true, the branch lengths of the phylogenetic tree are optimized.
+- `version::Union{difFUBARGrid, Nothing}=nothing`: explicitly choose the version of `difFUBAR_grid` to use. If `nothing`, the version is heuristically chosen based on the available RAM and Julia threads.
+- `t=0`: explicitly choose the amount of Julia threads to use. If `0`, the degree of parallelization is heuristically chosen based on the available RAM and Julia threads.
+
+!!! note
+    Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
+"""
 function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
@@ -422,6 +448,5 @@ function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thr
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
 end
-export difFUBAR
 
 

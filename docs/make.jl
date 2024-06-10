@@ -12,10 +12,11 @@ makedocs(;
         prettyurls=get(ENV, "CI", "false") == "true",
         canonical="https://MurrellGroup.github.io/CodonMolecularEvolution.jl",
         edit_link="main",
-        assets=String[],
+        assets=["assets/favicon.ico"],
     ),
     pages=[
         "Home" => "index.md",
+        "difFUBAR.md",
     ],
 )
 

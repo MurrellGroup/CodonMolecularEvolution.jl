@@ -4,9 +4,33 @@ Including: the default difFUBAR_grid function as well as different speedup trick
 combinations of implementations using parallelization and memoization. Also, it contains helper functions for these.
 """
 
+"""
+Use the trivial implementation of the grid likelihood computations, i.e. 1 thread without sub-tree likelihood caching.
+
+See also: `difFUBARParallel`, `difFUBARTreesurgery`, `difFUBARTreesurgeryAndParallel`.
+"""
 struct difFUBARBaseline <: difFUBARGrid end
+"""
+Extend the baseline version by parallelizing the grid calculations. Requires julia to be launched with the `t` switch.
+Using `t` computational threads, where `t` is sufficiently small, memory complexity is usually O(t) and time complexity O(1/t).
+Empirical tests suggests that `t` should not be higher than the machine's total CPU threads and usually not higher than half of it's total threads.
+
+See also: `difFUBARBaseline`, `difFUBARTreesurgery`, `difFUBARTreesurgeryAndParallel`.
+"""
 struct difFUBARParallel <: difFUBARGrid end
+"""
+Use sub-tree likelihood caching described in the "Methods" section of the difFUBAR paper.
+Use more memory than the baseline version but be significantly faster,
+if purity is high.
+
+See also: `difFUBARBaseline`, `difFUBARParallel`, `difFUBARTreesurgeryAndParallel`.
+"""
 struct difFUBARTreesurgery <: difFUBARGrid end
+"""
+Use parallelization and sub-tree likelihood caching. The most performant version in most cases. Use more memory than other versions.
+
+See also: `difFUBARBaseline`, `difFUBARTreesurgery`, `difFUBARParallel`.
+"""
 struct difFUBARTreesurgeryAndParallel <: difFUBARGrid end
 
 function add_to_each_element(vec_of_vec, elems)
