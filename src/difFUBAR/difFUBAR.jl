@@ -168,8 +168,8 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags, tag_colors; ve
 
 
     p = sortperm(tags)
-    tags,tag_colors = tags[p],tag_colors[p]
-    push!(tag_colors,"black") #ASSUMPTION: background color is always black
+    tags, tag_colors = tags[p], tag_colors[p]
+    push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
     if exports
         #Replace with Phylo.jl based plot?
@@ -186,7 +186,7 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags, tag_colors; ve
     return tree, tags, tag_colors, analysis_name
 end
 
-function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1, optimize_branch_lengths = false)
+function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; verbosity=1, optimize_branch_lengths=false)
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
@@ -199,16 +199,16 @@ function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; ve
     return tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs
 end
 
-function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code; verbosity = 1, optimize_branch_lengths = false)
+function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code; verbosity=1, optimize_branch_lengths=false)
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
-    tree, nuc_mu, nuc_pi = optimize_nuc_mu(seqnames, seqs, tree, leaf_name_transform = leaf_name_transform, genetic_code = code, optimize_branch_lengths = optimize_branch_lengths)
+    tree, nuc_mu, nuc_pi = optimize_nuc_mu(seqnames, seqs, tree, leaf_name_transform=leaf_name_transform, genetic_code=code, optimize_branch_lengths=optimize_branch_lengths)
 
     #Optionally polish branch lengths
     if optimize_branch_lengths == true
         tree_polish!(tree, GeneralCTMC(reversibleQ(nuc_mu, nuc_pi)), verbose=verbosity, topology=false)
-    #Detect if all branchlengths are zero or all branchlengths are the same
+        #Detect if all branchlengths are zero or all branchlengths are the same
     elseif optimize_branch_lengths == "detect"
         branchlengths = [x.branchlength for x in getnodelist(tree)]
         if all(x -> x == 0, branchlengths)
@@ -219,33 +219,33 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
     end
 
     GTRmat = reversibleQ(nuc_mu, ones(4))
-    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform = leaf_name_transform, genetic_code = code)
+    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code)
     rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1
-    
+
     ######
     #optionally polish branch lengths and topology
     ######
 
-    return tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs
+    return tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs
 end
 
 #foreground_grid and background_grid control the number of categories below 1.0
-function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity = 1, foreground_grid = 6, background_grid = 4, version::Union{difFUBARGrid, Nothing} = nothing, t = 0)
+function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
 
-    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags; 
-                                                                                                                                                    verbosity = verbosity, 
-                                                                                                                                                    foreground_grid = foreground_grid, 
-                                                                                                                                                    background_grid = background_grid
-                                                                                                                                                    )
+    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags;
+        verbosity=verbosity,
+        foreground_grid=foreground_grid,
+        background_grid=background_grid
+    )
     heuristic_pick, nthreads = choose_grid_and_nthreads(tree, tags, num_groups, num_sites, alphagrid, omegagrid, background_omega_grid, code)
     t < 1 && (t = nthreads)
     isnothing(version) && (version = heuristic_pick)
     verbosity > 1 && println("\n$(typeof(version)), with $(t) parallel threads will be used for the grid likelihood calculations\n") #Higher level of verbosity
-    return difFUBAR_grid(version, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, t; 
-                        verbosity = verbosity, 
-                        foreground_grid = foreground_grid,
-                        background_grid = background_grid
-                        )
+    return difFUBAR_grid(version, tree, tags, GTRmat, F3x4_freqs, code, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, t;
+        verbosity=verbosity,
+        foreground_grid=foreground_grid,
+        background_grid=background_grid
+    )
 end
 
 function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
@@ -341,7 +341,9 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
 
         lmargin = 7 + length(sites_to_plot) / 2
         ysize = 300 + 70 * length(sites[sites_to_plot])
-        FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.75, grd, tag="α", color="green", x_label="α")
+        #FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.75, grd, tag="α", color="green", x_label="α")
+        Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
+        FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot], grd, tag="α", color="green", x_label="α")
         plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
 
         savefig(analysis_name * "_violin_alpha.pdf")
@@ -395,7 +397,10 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
     if exports
         Plots.CURRENT_PLOT.nullableplot = nothing
         FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
-        plot!(size=(1.25 * length(sites), 300), margins=1Plots.cm, grid=false, legendfontsize=8)
+
+
+        xsize = 300 + 70 * length(sites[sites_to_plot])
+        plot!(size=(xsize, 300), margins=1.5Plots.cm, grid=false, legendfontsize=8)
         savefig(analysis_name * "_site_omega_means.pdf")
 
     end
@@ -431,14 +436,14 @@ export difFUBAR
 !!! note
     Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
 """
-function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh = 0.95, iters = 2500, verbosity = 1, exports = true, code = MolecularEvolution.universal_code, optimize_branch_lengths = false, version::Union{difFUBARGrid, Nothing} = nothing, t = 0)
+function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports = exports, verbosity = verbosity)
-    tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity = verbosity, optimize_branch_lengths = optimize_branch_lengths)
-    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code, 
-                                                                                verbosity = verbosity, foreground_grid = 6, background_grid = 4, version = version, t = t)
-    alloc_grid,theta = difFUBAR_sample(con_lik_matrix, iters, verbosity = verbosity)
-    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity = verbosity, exports = exports)
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
+    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
+        verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
+    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
