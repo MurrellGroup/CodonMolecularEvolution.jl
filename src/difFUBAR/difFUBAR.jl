@@ -400,13 +400,6 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
 
 
         xsize = 300 + 70 * length(sites[sites_to_plot])
-        println()
-        println("!#DSASD")
-        println(xsize)
-        println("SAKDL")
-        println()
-        # original xsize = 1.25 * length(sites)
-
         plot!(size=(xsize, 300), margins=1.5Plots.cm, grid=false, legendfontsize=8)
         savefig(analysis_name * "_site_omega_means.pdf")
 
