@@ -12,9 +12,17 @@ end
 
 #Rename this nonsense
 """
-    scrape_figtree_colored_nexus(fname; custom_labels = String[])
+    import_colored_figtree_nexus_as_tagged_tree(fname; custom_labels=String[])
 
 Takes a nexus file from FigTree, where branches have been colored. Replaces all color tags with group tags that can be used in the models. Can add custom labels too. Should consider an entire custom dictionary as well in future.
+
+# Examples
+```julia-repl
+julia> treestring, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree("data/Ace2_no_background.nex")
+("(((XM_027533928_Bos_indicus_x_Bos_taurus{G1}:0.097072,(XM_042974087_Panthera_tigris{G1}:0.038016,... more ...;", ["{G2}", "{G1}"], ["#ff0015", "#0011ff"])
+```
+!!! note
+    `treestring` is truncated. [NEXUS tree file](https://raw.githubusercontent.com/MurrellGroup/CodonMolecularEvolution.jl/main/test/data/Ace2_no_background/Ace2_no_background.nex)
 """
 function import_colored_figtree_nexus_as_tagged_tree(fname; custom_labels=String[])
     start_substr = "[&R] "
@@ -139,9 +147,12 @@ function generate_hex_colors(num_colors)
     return colors_string
 end
 
+"""
+    import_grouped_label_tree(tree_file)
 
+Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
+"""
 function import_grouped_label_tree(tree_file)
-    # Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
     tree = read_newick_tree(tree_file)
     treestring = newick(tree)
     treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
@@ -178,7 +189,7 @@ export remove_tags_from_newick_tree
 
 #TODO: Make this first optimize a nuc model, then optimize a codon model starting from the nuc model estimates, fixing the GTR matrix
 """
-    optimize_MG94_F3x4(seqnames, seqs, treestring; leaf_name_transform = x -> x)
+    optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
 
 Optimizes the MG94+F3x4 model on a tree, given a set of sequences and a tree. Returns the optimized tree, alpha, beta, nuc_matrix, F3x4, and eq_freqs.
 The leaf_name_transform kwarg can be used to transform the leaf names in the tree to match the seqnames.
@@ -227,6 +238,8 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     #tree, alpha, beta, nuc_matrix, F3x4, eq_freqs
     return tree, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
 end
+
+export optimize_MG94_F3x4
 
 function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, optimize_branch_lengths = false)
     #Optimize mu params using a nuc model, mu denotes the nucleotide mutational biases
@@ -301,7 +314,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
         isodd = i % 2 == 1
         if isodd
             alpha = brents_method_minimize(x -> -objective(x, beta), lower_bound, upper_bound, identity, high_tol)
-            @show Int(ceil(log(high_tol / (upper_bound - lower_bound)) / log(MolecularEvolution.invphi)))
+            #@show Int(ceil(log(high_tol / (upper_bound - lower_bound)) / log(MolecularEvolution.invphi)))
             #alpha = golden_section_maximize(x -> objective(x, beta), lower_bound, upper_bound, identity, high_tol)
             #@show alpha1, alpha
         else
