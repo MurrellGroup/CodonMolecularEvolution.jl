@@ -100,7 +100,6 @@ function replace_newick_tags(treestr)
     pattern = r"\{([^}]+)\}"
     unique_tags = Set{String}()
     for match in eachmatch(pattern, treestr)
-        println(match)
         push!(unique_tags, match.match)
     end
     unique_tags = collect(unique_tags)
@@ -141,16 +140,93 @@ function generate_hex_colors(num_colors)
 end
 
 
-function import_grouped_label_tree(tree_file)
+function generate_hex_colors_predefined(num_colors)
+
+    if num_colors < 1
+        throw(ArgumentError("num_colors must be a positive integer"))
+    end
+    color_palette = ["#0000FF", "#FF0000", "#008000", "#FFFF00", "#800080", "#000080", "#808080"]
+
+    if num_colors <= 7
+        return color_palette[1:num_colors]
+    else
+        colors = color_palette * (num_colors // 7)
+        colors += color_palette[1:num_colors%7]
+        return colors
+    end
+end
+
+
+
+function get_group_from_name(input_string)
+    group_pattern = r"\{(.+?)\}"
+    match_result = match(group_pattern, input_string)
+    if match_result != nothing
+        return match_result.match
+    else
+        return ""
+    end
+end
+
+
+function remove_internal_node_tags(tree)
+    # This function so we dont get double tagging in the recursive_tagging
+    pattern = r"\{([^}]+)\}"
+    for node in getnonleaflist(tree)
+        res = match(pattern, node.name)
+        if res !== nothing
+            node.name = replace(node.name, res.match => "")
+        else
+            node.name = node.name
+        end
+    end
+end
+
+
+function recursive_tagging(node)
+    if isleafnode(node)
+        return
+    end
+
+
+    left_child = recursive_tagging(node.children[1])
+    right_child = recursive_tagging(node.children[2])
+
+    if get_group_from_name(node.children[1].name) == get_group_from_name(node.children[2].name)
+        group = get_group_from_name(node.children[1].name)
+    else
+        group = ""
+    end
+    node.name = node.name * group
+
+end
+
+
+function remove_groups(input::AbstractString)
+    result = replace(input, r"\{[^}]*\}" => "")
+    return result
+end
+
+
+function import_grouped_labelled_newick_tree(tree_file::String, recursive_retagging::Bool=false)
     # Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
     tree = read_newick_tree(tree_file)
-    treestring = newick(tree)
-    treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
-    tag_colors = generate_hex_colors(length(original_tags))
+
+    if recursive_retagging == false
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
+        tag_colors = generate_hex_colors_predefined(length(original_tags))
+    else
+        remove_internal_node_tags(tree)
+        recursive_tagging(tree)
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = CodonMolecularEvolution.replace_newick_tags(treestring)
+        tag_colors = CodonMolecularEvolution.generate_hex_colors_predefined(length(original_tags))
+    end
     return treestring_group_labeled, treestring, group_tags, original_tags, tag_colors
 end
 
-export import_grouped_label_tree
+export import_grouped_labelled_newick_tree
 
 
 function select_analysis_tags_from_newick_tree(tags, tag_colors, tag_pos)
@@ -185,7 +261,6 @@ Optimizes the MG94+F3x4 model on a tree, given a set of sequences and a tree. Re
 The leaf_name_transform kwarg can be used to transform the leaf names in the tree to match the seqnames.
 """
 function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
-
     #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
     f3x4 = MolecularEvolution.count_F3x4(seqs)
     eq_freqs = MolecularEvolution.F3x4_eq_freqs(f3x4)
@@ -220,9 +295,8 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     upper_bounds!(opt, [5.0 for i in 1:num_params])
     xtol_rel!(opt, 1e-12)
     _, mini, _ = NLopt.optimize(opt, flat_initial_params)
-
     final_params = unflatten(mini)
-
+    final_params.rates
     #tree, alpha, beta, nuc_matrix, F3x4, eq_freqs
     return tree, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
 end
