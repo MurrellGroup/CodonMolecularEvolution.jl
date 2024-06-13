@@ -4,28 +4,27 @@ CurrentModule = CodonMolecularEvolution
 
 # CodonMolecularEvolution
 
+### A Julia package for popular and new codon models of molecular evolution.
+
 Documentation for [CodonMolecularEvolution](https://github.com/MurrellGroup/CodonMolecularEvolution.jl).
 
 Descendant of [MolecularEvolution.jl](https://github.com/MurrellGroup/MolecularEvolution.jl), specializing in codon models.
 
-### A Julia package that contains a collection of popular/(state of the art) codon model methods.
-
-CodonMolecularEvolution.jl leverages the MolecularEvolution.jl framework to provide a performant interface to some codon model methods that are used for phylogenetic analysis.
-
 ### Collection of codon model methods
 - [difFUBAR](@ref): Scalable Bayesian comparison of selection pressure
     - Perform a site-wise comparison of evolutionary pressure between two selected sets of branches.
+    - Authors: Hassan Sadiq, Venkatesh Kumar, and Ben Murrell (original model development), Patrick Truong (benchmarking), Maximilian Danielsson (performance optimization).
 
 ### Design principles
-- Specificity
-    - We keep our implementations on a high level of abstraction and let `MolecularEvolution.jl` take care of the low-level behaviour.
+- User-facing
+    - Users with no Julia experience should be able to run these models.
 - Scalability
-    - Our exported codon model methods should scale to large, real-world datasets. To keep the memory footprint down, we use `MolecularEvolution.jl`s `LazyPartition` when possible.
+    - Models should scale to large, real-world datasets. To keep the memory footprint down, we use `MolecularEvolution.jl`s `LazyPartition` when possible.
 - Performance
-    - While scalability takes precedence over speed?, we try to maintain competitive runtimes by using e.g. computational shortcuts and parallelization whenever we can.
+    - We try to maintain competitive runtimes by using e.g. computational shortcuts and parallelization whenever we can.
 
-### Authors
-Ben decides what to put here.
+### Package Authors and Maintainers
+Maximilian Danielsson and Ben Murrell. Authors for specific models listed above.
 
 ```@index
 ```
