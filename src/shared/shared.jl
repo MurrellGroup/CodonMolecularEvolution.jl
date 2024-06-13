@@ -140,16 +140,93 @@ function generate_hex_colors(num_colors)
 end
 
 
-function import_grouped_label_tree(tree_file)
+function generate_hex_colors_predefined(num_colors)
+
+    if num_colors < 1
+        throw(ArgumentError("num_colors must be a positive integer"))
+    end
+    color_palette = ["#0000FF", "#FF0000", "#008000", "#FFFF00", "#800080", "#000080", "#808080"]
+
+    if num_colors <= 7
+        return color_palette[1:num_colors]
+    else
+        colors = color_palette * (num_colors // 7)
+        colors += color_palette[1:num_colors%7]
+        return colors
+    end
+end
+
+
+
+function get_group_from_name(input_string)
+    group_pattern = r"\{(.+?)\}"
+    match_result = match(group_pattern, input_string)
+    if match_result != nothing
+        return match_result.match
+    else
+        return ""
+    end
+end
+
+
+function remove_internal_node_tags(tree)
+    # This function so we dont get double tagging in the recursive_tagging
+    pattern = r"\{([^}]+)\}"
+    for node in getnonleaflist(tree)
+        res = match(pattern, node.name)
+        if res !== nothing
+            node.name = replace(node.name, res.match => "")
+        else
+            node.name = node.name
+        end
+    end
+end
+
+
+function recursive_tagging(node)
+    if isleafnode(node)
+        return
+    end
+
+
+    left_child = recursive_tagging(node.children[1])
+    right_child = recursive_tagging(node.children[2])
+
+    if get_group_from_name(node.children[1].name) == get_group_from_name(node.children[2].name)
+        group = get_group_from_name(node.children[1].name)
+    else
+        group = ""
+    end
+    node.name = node.name * group
+
+end
+
+
+function remove_groups(input::AbstractString)
+    result = replace(input, r"\{[^}]*\}" => "")
+    return result
+end
+
+
+function import_grouped_labelled_newick_tree(tree_file::String, recursive_retagging::Bool=false)
     # Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
     tree = read_newick_tree(tree_file)
-    treestring = newick(tree)
-    treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
-    tag_colors = generate_hex_colors(length(original_tags))
+
+    if recursive_retagging == false
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
+        tag_colors = generate_hex_colors_predefined(length(original_tags))
+    else
+        remove_internal_node_tags(tree)
+        recursive_tagging(tree)
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = CodonMolecularEvolution.replace_newick_tags(treestring)
+        tag_colors = CodonMolecularEvolution.generate_hex_colors_predefined(length(original_tags))
+    end
     return treestring_group_labeled, treestring, group_tags, original_tags, tag_colors
 end
 
-export import_grouped_label_tree
+export import_grouped_labelled_newick_tree
 
 
 function select_analysis_tags_from_newick_tree(tags, tag_colors, tag_pos)
@@ -228,7 +305,7 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     return tree, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
 end
 
-function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, optimize_branch_lengths = false)
+function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
     #Optimize mu params using a nuc model, mu denotes the nucleotide mutational biases
     nuc_pi = char_proportions(seqs, MolecularEvolution.nucstring)
 
@@ -289,7 +366,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     function objective(alpha=1, beta=1; tree=tree, eq_freqs=eq_freqs)
         return log_likelihood!(tree, build_model_vec(alpha, beta))
     end
-    
+
     #High tolerance estimates of alpha then beta
     alpha, beta = 1.0, 1.0
     num_1d_optims = 3 #We'll do this many 1D optimizations, first for alpha, then beta, then alpha again and so forth
@@ -337,7 +414,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
             yvec[wipe_index] = max_obj
             perm = sortperm(xvec)
             xvec = xvec[perm]
-            yvec = yvec[perm]  
+            yvec = yvec[perm]
         end
         alpha = MolecularEvolution.new_max(xvec, yvec)
         iters += 1
