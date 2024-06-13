@@ -157,6 +157,16 @@ function generate_hex_colors_predefined(num_colors)
 end
 
 
+function get_node_by_name(tree, nodename)
+    mynode = []
+    for node in getnodelist(tree)
+        if node.name == nodename
+            push!(mynode, node)
+        end
+    end
+    mynode = mynode[1]
+    return mynode
+end
 
 function get_group_from_name(input_string)
     group_pattern = r"\{(.+?)\}"
@@ -227,6 +237,31 @@ function import_grouped_labelled_newick_tree(tree_file::String, recursive_retagg
 end
 
 export import_grouped_labelled_newick_tree
+
+
+
+function import_grouped_labelled_newick_tree_reroot(tree_file::String, node_name::String, dist_above_child::Float64, recursive_retagging::Bool=false)
+    # Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
+    tree = read_newick_tree(tree_file)
+    node = get_node_by_name(tree, node_name)
+    tree = MolecularEvolution.recursive_reroot(node, dist_above_child=dist_above_child)
+
+    if recursive_retagging == false
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
+        tag_colors = generate_hex_colors_predefined(length(original_tags))
+    else
+        remove_internal_node_tags(tree)
+        recursive_tagging(tree)
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = CodonMolecularEvolution.replace_newick_tags(treestring)
+        tag_colors = CodonMolecularEvolution.generate_hex_colors_predefined(length(original_tags))
+    end
+    return treestring_group_labeled, treestring, group_tags, original_tags, tag_colors
+end
+
+export import_grouped_labelled_newick_tree_reroot
+
 
 
 function select_analysis_tags_from_newick_tree(tags, tag_colors, tag_pos)
