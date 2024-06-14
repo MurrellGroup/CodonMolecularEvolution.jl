@@ -1,12 +1,18 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, Measures, Compose
-using Plots
-using StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling
+using FASTX, MolecularEvolution, Measures, Compose, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra
+
+abstract type difFUBARGrid end
 
 include("shared/shared.jl")
 include("difFUBAR/difFUBAR.jl")
+include("difFUBAR/grids.jl")
+include("../test/benchmark_difFUBAR.jl")
 
-# Write your package code here.
+export 
+    difFUBARBaseline,
+    difFUBARParallel,
+    difFUBARTreesurgery,
+    difFUBARTreesurgeryAndParallel
 
 end

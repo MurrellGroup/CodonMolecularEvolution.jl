@@ -156,6 +156,7 @@ function generate_hex_colors_predefined(num_colors)
     end
 end
 
+<<<<<<< HEAD
 function get_node_by_name(tree, nodename)
     mynode = []
     for node in getnodelist(tree)
@@ -166,6 +167,9 @@ function get_node_by_name(tree, nodename)
     mynode = mynode[1]
     return mynode
 end
+=======
+
+>>>>>>> 1a08afbedc78e6648ffcb0cecbc49e12cb9125a7
 
 function get_group_from_name(input_string)
     group_pattern = r"\{(.+?)\}"
@@ -238,6 +242,7 @@ end
 export import_grouped_labelled_newick_tree
 
 
+<<<<<<< HEAD
 function import_grouped_labelled_newick_tree_reroot(tree_file::String, node_name::String, dist_above_child::Float64, recursive_retagging::Bool=false)
     # Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
     tree = read_newick_tree(tree_file)
@@ -262,6 +267,8 @@ end
 export import_grouped_labelled_newick_tree_reroot
 
 
+=======
+>>>>>>> 1a08afbedc78e6648ffcb0cecbc49e12cb9125a7
 function select_analysis_tags_from_newick_tree(tags, tag_colors, tag_pos)
     # If there are more than 2 tags in the newick tree, we split up the tags to the tags to be analyzed and the tags to be removed (placed as background)
     analysis_tags = tags[tag_pos]
@@ -302,7 +309,11 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     #Set up a codon partition (will default to Universal genetic code)
     eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
     eq_partition.state .= eq_freqs
+<<<<<<< HEAD
     initial_partition = LazyPartition{CodonPartition}()
+=======
+    initial_partition = LazyPartition{CodonPartition}(nothing)
+>>>>>>> 1a08afbedc78e6648ffcb0cecbc49e12cb9125a7
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     lazyprep!(tree, [eq_partition])
 
@@ -336,6 +347,7 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
 
     #tree, alpha, beta, nuc_matrix, F3x4, eq_freqs
     return tree, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
+<<<<<<< HEAD
 end
 
 function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
@@ -396,6 +408,68 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
         return GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
     end
 
+=======
+end
+
+function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
+    #Optimize mu params using a nuc model, mu denotes the nucleotide mutational biases
+    nuc_pi = char_proportions(seqs, MolecularEvolution.nucstring)
+
+    eq_partition = NucleotidePartition(length(seqs[1]))
+    eq_partition.state .= nuc_pi
+    if optimize_branch_lengths == true
+        populate_tree!(tree, eq_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+    else
+        initial_partition = LazyPartition{NucleotidePartition}(nothing)
+        populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+        lazyprep!(tree, [eq_partition])
+    end
+
+    initial_params = positive(ones(6)) #rates must be non-negative
+
+    flat_initial_params, unflatten = value_flatten(initial_params) #See ParameterHandling.jl docs
+    num_params = length(flat_initial_params)
+
+    function build_model_vec(p; nuc_pi=nuc_pi)
+        return GeneralCTMC(reversibleQ(p, nuc_pi))
+    end
+
+    function objective(params; tree=tree)
+        return -log_likelihood!(tree, build_model_vec(params))
+    end
+
+    opt = Opt(:LN_BOBYQA, num_params)
+    min_objective!(opt, (x, y) -> (objective ∘ unflatten)(x))
+    lower_bounds!(opt, [-5.0 for i in 1:num_params])
+    upper_bounds!(opt, [5.0 for i in 1:num_params])
+    xtol_rel!(opt, 1e-12)
+    _, mini, _ = NLopt.optimize(opt, flat_initial_params)
+
+    final_params = unflatten(mini)
+    #tree, nuc mu rates, nuc pi rates
+    return tree, final_params, nuc_pi
+end
+
+function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
+    #Now we optimize alpha and beta rates using a codon model
+    #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
+    f3x4 = MolecularEvolution.count_F3x4(seqs)
+    eq_freqs = MolecularEvolution.F3x4_eq_freqs(f3x4)
+
+    #Set up a codon partition (will default to Universal genetic code)
+    eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
+    eq_partition.state .= eq_freqs
+    initial_partition = LazyPartition{CodonPartition}(nothing)
+    populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
+    lazyprep!(tree, [eq_partition])
+
+    function build_model_vec(alpha, beta; F3x4=f3x4)
+        #Need to pass through genetic code here!
+        #If you run into numerical issues with DiagonalizedCTMC, switch to GeneralCTMC instead
+        return GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
+    end
+
+>>>>>>> 1a08afbedc78e6648ffcb0cecbc49e12cb9125a7
     function objective(alpha=1, beta=1; tree=tree, eq_freqs=eq_freqs)
         return log_likelihood!(tree, build_model_vec(alpha, beta))
     end
