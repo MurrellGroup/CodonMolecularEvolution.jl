@@ -11,7 +11,7 @@ function benchmark_grid_on_dataset(dir, versions_option, t)
 
     seqnames, seqs = read_fasta(fasta_path)
 
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestr, tags, tag_colors, exports=false, verbosity=0)
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestr, tags, exports=false, verbosity=0)
     code = MolecularEvolution.universal_code
     tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0) #60s
 
@@ -119,7 +119,7 @@ function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversion
 
     seqnames, seqs = read_fasta(fasta_path)
 
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestr, tags, tag_colors, exports=false, verbosity=0)
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestr, tags, exports=false, verbosity=0)
     code = MolecularEvolution.universal_code
     global_fits = versions
     trees = [tree, [deepcopy(tree) for _ = 1:(nversions - 1)]...]

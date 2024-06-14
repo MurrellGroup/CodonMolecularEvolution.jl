@@ -2,13 +2,13 @@ begin
     analysis_name = "nobackground/Ace2"
     seqnames,seqs = read_fasta("data/Ace2_no_background/Ace2_tiny_test.fasta");
     treestring, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree("data/Ace2_no_background/Ace2_no_background.nex")
-    df,results = difFUBAR(seqnames, seqs, treestring, tags, tag_colors, analysis_name, exports = false, verbosity = 0)
+    df,results = difFUBAR(seqnames, seqs, treestring, tags, analysis_name, exports = false, verbosity = 0)
     @assert size(df) == (19, 8)
 end
 
 begin #grids
     versions = [difFUBARBaseline(), difFUBARParallel(), difFUBARTreesurgery(), difFUBARTreesurgeryAndParallel()]
-    tree, tags, tag_colors, analysis_name = CodonMolecularEvolution.difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports = false, verbosity = 0)
+    tree, tags, tag_colors, analysis_name = CodonMolecularEvolution.difFUBAR_init(analysis_name, treestring, tags, exports = false, verbosity = 0)
     code = MolecularEvolution.universal_code
     tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs = CodonMolecularEvolution.difFUBAR_global_fit_2steps(seqnames, seqs, tree, CodonMolecularEvolution.generate_tag_stripper(tags), code, verbosity = 0)
     tree_copy = deepcopy(tree) #Treesurgery removes nodes
