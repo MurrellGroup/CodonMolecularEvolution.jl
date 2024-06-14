@@ -282,6 +282,20 @@ end
 export remove_tags_from_newick_tree
 
 
+function plot_tree(tree, tags, tag_colors)
+    ### quick plotting to check rerooting
+    p = sortperm(tags)
+    tags, tag_colors = tags[p], tag_colors[p]
+    push!(tag_colors, "black")
+    strip_tags_from_name = CodonMolecularEvolution.generate_tag_stripper(tags)
+    color_dict = Dict(zip(getnodelist(tree), [tag_colors[CodonMolecularEvolution.model_ind(n.name, tags)] for n in getnodelist(tree)]))
+    label_dict = Dict(zip(getnodelist(tree), [strip_tags_from_name(n.name) for n in getnodelist(tree)]))
+
+    tree_draw(tree, canvas_height=(3 + length(getleaflist(tree)) / 5)cm,
+        draw_labels=true, dot_color_dict=color_dict,
+        line_color_dict=color_dict, line_width=0.3, min_dot_size=0.01,
+        nodelabel_dict=label_dict)
+end
 
 
 
