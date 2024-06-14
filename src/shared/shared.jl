@@ -238,6 +238,30 @@ end
 export import_grouped_labelled_newick_tree
 
 
+function import_grouped_labelled_newick_tree_reroot(tree_file::String, node_name::String, dist_above_child::Float64, recursive_retagging::Bool=false)
+    # Takes a Newick tree file and return Newick tree, Newick tree with replaced tags, group tags, original tags, and randomly generated colours for each tag
+    tree = read_newick_tree(tree_file)
+
+    node = get_node_by_name(tree, node_name)
+    tree = MolecularEvolution.recursive_reroot(node, dist_above_child=dist_above_child)
+
+    if recursive_retagging == false
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = replace_newick_tags(treestring)
+        tag_colors = generate_hex_colors_predefined(length(original_tags))
+    else
+        remove_internal_node_tags(tree)
+        recursive_tagging(tree)
+        treestring = newick(tree)
+        treestring_group_labeled, group_tags, original_tags = CodonMolecularEvolution.replace_newick_tags(treestring)
+        tag_colors = CodonMolecularEvolution.generate_hex_colors_predefined(length(original_tags))
+    end
+    return treestring_group_labeled, treestring, group_tags, original_tags, tag_colors
+end
+
+export import_grouped_labelled_newick_tree_reroot
+
+
 function select_analysis_tags_from_newick_tree(tags, tag_colors, tag_pos)
     # If there are more than 2 tags in the newick tree, we split up the tags to the tags to be analyzed and the tags to be removed (placed as background)
     analysis_tags = tags[tag_pos]
@@ -278,7 +302,7 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     #Set up a codon partition (will default to Universal genetic code)
     eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
     eq_partition.state .= eq_freqs
-    initial_partition = LazyPartition{CodonPartition}(nothing)
+    initial_partition = LazyPartition{CodonPartition}()
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     lazyprep!(tree, [eq_partition])
 
@@ -323,7 +347,7 @@ function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genet
     if optimize_branch_lengths == true
         populate_tree!(tree, eq_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     else
-        initial_partition = LazyPartition{NucleotidePartition}(nothing)
+        initial_partition = LazyPartition{NucleotidePartition}()
         populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
         lazyprep!(tree, [eq_partition])
     end
@@ -362,7 +386,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     #Set up a codon partition (will default to Universal genetic code)
     eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
     eq_partition.state .= eq_freqs
-    initial_partition = LazyPartition{CodonPartition}(nothing)
+    initial_partition = LazyPartition{CodonPartition}()
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     lazyprep!(tree, [eq_partition])
 
