@@ -10,6 +10,7 @@
 #4 - Get subtree-caching working
 #5 - Add tree import where the user specifies FG1, and everything else is FG2 (ie. no background)
 
+const DIFFUBAR_TAG_COLORS = ["#ff0000", "#1900ff"] # [red, blue]
 
 #Here, untagged comes after the tags
 function model_ind(str::String, tags::Vector{String})
@@ -138,7 +139,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags, tag_colors; verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags))
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags))
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -254,7 +255,7 @@ function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
     return alloc_grid, theta
 end
 
-function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=1, sites_to_plot=nothing, exports=true)
+function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
     grid_size, num_sites = size(alloc_grid)
 
     r(s) = round(s, digits=4)
@@ -412,7 +413,7 @@ export difFUBAR_tabulate
 #Must return enough to re-calculate detections etc
 export difFUBAR
 """
-    difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; <keyword arguments>)
+    difFUBAR(seqnames, seqs, treestring, tags, outpath; <keyword arguments>)
 
 Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysis.
 
@@ -421,8 +422,8 @@ Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysi
 - `seqs`: vector of aligned sequences, corresponding to `seqnames`.
 - `treestring`: a tagged newick tree string.
 - `tags`: vector of tag signatures.
-- `tag_colors`: vector of tag colors (hex format).
 - `outpath`: export directory.
+- `tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)]`: vector of tag colors (hex format). The default option is consistent with the difFUBAR paper (Foreground 1: red, Foreground 2: blue).
 - `pos_thresh=0.95`: threshold of significance for the posteriors.
 - `iters=2500`: iterations used in the Gibbs sampler.
 - `verbosity=1`: as verbosity increases, prints are added accumulatively. 
@@ -438,14 +439,14 @@ Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysi
 !!! note
     Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
 """
-function difFUBAR(seqnames, seqs, treestring, tags, tag_colors, outpath; pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
+function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors, exports=exports, verbosity=verbosity)
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
-    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=verbosity, exports=exports)
+    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=tag_colors, verbosity=verbosity, exports=exports)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
