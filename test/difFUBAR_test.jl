@@ -46,8 +46,8 @@ begin #getpuresubclades
     tags = ["{G1}", "{G2}"]
     two_pure_clades!(tree, tags)
     pure_subclades = CodonMolecularEvolution.getpuresubclades(tree, tags)
-    @test length(pure_subclades) == 2 || any(map(isleafnode, tree.children))
-    @test isroot(pure_subclades[1].parent) && isroot(pure_subclades[2].parent)
+    @test (length(pure_subclades) == 2 && isroot(pure_subclades[2].parent)) || any(map(isleafnode, tree.children))
+    @test isroot(pure_subclades[1].parent)
 
     #Random tags
     tree = sim_tree(n=200)
