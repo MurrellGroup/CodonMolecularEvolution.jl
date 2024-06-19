@@ -203,7 +203,7 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     #Set up a codon partition (will default to Universal genetic code)
     eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
     eq_partition.state .= eq_freqs
-    initial_partition = LazyPartition{CodonPartition}(nothing)
+    initial_partition = LazyPartition{CodonPartition}()
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     lazyprep!(tree, [eq_partition])
 
@@ -250,7 +250,7 @@ function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genet
     if optimize_branch_lengths == true
         populate_tree!(tree, eq_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     else
-        initial_partition = LazyPartition{NucleotidePartition}(nothing)
+        initial_partition = LazyPartition{NucleotidePartition}()
         populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
         lazyprep!(tree, [eq_partition])
     end
@@ -289,7 +289,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     #Set up a codon partition (will default to Universal genetic code)
     eq_partition = CodonPartition(Int64(length(seqs[1]) / 3), code=genetic_code)
     eq_partition.state .= eq_freqs
-    initial_partition = LazyPartition{CodonPartition}(nothing)
+    initial_partition = LazyPartition{CodonPartition}()
     populate_tree!(tree, initial_partition, seqnames, seqs, leaf_name_transform=leaf_name_transform)
     lazyprep!(tree, [eq_partition])
 
