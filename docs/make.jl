@@ -17,7 +17,8 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "difFUBAR.md",
-        "shared.md"
+        "shared.md",
+        "dataprep.md"
     ],
 )
 

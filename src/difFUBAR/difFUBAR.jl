@@ -139,7 +139,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags))
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=false)
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -148,12 +148,12 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
         exports && mkpath(joinpath(splt))
     end
 
-    tree = gettreefromnewick(treestring, FelNode)
+    tree = gettreefromnewick(treestring, FelNode, disable_binarize=disable_binarize)
 
     #Need to think of consequences of eg. binarizing when there are tags.
     #We'll need the non-zero branch lengths to inherit the names/tags, for example.
     #REQUIRED TEST: CHECK NODE NAMES AFTER BINARIZATION
-    MolecularEvolution.binarize!(tree) #Check if this is required for trees with ternary branching?
+    #MolecularEvolution.binarize!(tree) #Check if this is required for trees with ternary branching?
     #Make this optional, but done by default
     MolecularEvolution.ladderize!(tree)
 

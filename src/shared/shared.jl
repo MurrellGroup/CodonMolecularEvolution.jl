@@ -182,8 +182,18 @@ function remove_tags_from_newick_tree(treestring, tags)
 end
 export remove_tags_from_newick_tree
 
+export import_labeled_phylotree_newick
+"""
+    import_labeled_phylotree_newick(fname)
 
-
+Import a tagged phylogeny from phylotree and return the treestring and tags.
+"""
+function import_labeled_phylotree_newick(fname)
+    treestring = read(fname, String)
+    R = r"(\{[^}]+\})"
+    tags = union([string(m.match) for m in eachmatch(R, treestring)])
+    return treestring, tags
+end
 
 
 

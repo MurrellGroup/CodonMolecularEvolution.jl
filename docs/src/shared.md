@@ -5,6 +5,7 @@ These tools are shared between the models.
 ```@docs
 import_colored_figtree_nexus_as_tagged_tree
 import_grouped_label_tree
+import_labeled_phylotree_newick
 ```
 
 ## Model fitting
