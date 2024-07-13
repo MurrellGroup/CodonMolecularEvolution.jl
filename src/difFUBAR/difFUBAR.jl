@@ -139,7 +139,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=false)
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=false, ladderize_tree = false)
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -154,8 +154,10 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     #We'll need the non-zero branch lengths to inherit the names/tags, for example.
     #REQUIRED TEST: CHECK NODE NAMES AFTER BINARIZATION
     #MolecularEvolution.binarize!(tree) #Check if this is required for trees with ternary branching?
-    #Make this optional, but done by default
-    MolecularEvolution.ladderize!(tree)
+    
+    if ladderize_tree
+        MolecularEvolution.ladderize!(tree)
+    end
 
     #data validation checks:
     #seq lengths must all be multiples of there
@@ -221,6 +223,7 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
 
     GTRmat = reversibleQ(nuc_mu, ones(4))
     tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code)
+    
     rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1
 
     ######

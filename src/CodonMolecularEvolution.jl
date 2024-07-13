@@ -9,10 +9,13 @@ include("difFUBAR/difFUBAR.jl")
 include("difFUBAR/grids.jl")
 include("../test/benchmark_difFUBAR.jl")
 
+include("FUBAR/FUBAR.jl")
+
 export 
     difFUBARBaseline,
     difFUBARParallel,
     difFUBARTreesurgery,
-    difFUBARTreesurgeryAndParallel
+    difFUBARTreesurgeryAndParallel,
+    FUBAR
 
 end

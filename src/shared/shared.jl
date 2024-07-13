@@ -290,7 +290,7 @@ function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genet
     return tree, final_params, nuc_pi
 end
 
-function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
+function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, verbosity = 1)
     #Now we optimize alpha and beta rates using a codon model
     #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
     f3x4 = MolecularEvolution.count_F3x4(seqs)
@@ -306,7 +306,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     function build_model_vec(alpha, beta; F3x4=f3x4)
         #Need to pass through genetic code here!
         #If you run into numerical issues with DiagonalizedCTMC, switch to GeneralCTMC instead
-        return GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
+        return robust_CTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
     end
 
     function objective(alpha=1, beta=1; tree=tree, eq_freqs=eq_freqs)
@@ -351,6 +351,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     iters = 0
     xvec = [alpha - ε, alpha, alpha + ε]
     yvec = map(x -> objective(x, beta), xvec)
+    max_obj = 0.0
     while abs(alpha - prev_alpha) > low_tol && iters < maxiters
         prev_alpha = alpha
         if iters > 0 #We use this order to avoid one potential objective call
@@ -365,6 +366,8 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
         alpha = MolecularEvolution.new_max(xvec, yvec)
         iters += 1
     end
+    
+    verbosity > 0 && println("Optimized single α,β LL=$(max_obj) with α=$(alpha) and β=$(beta).")
     #tree, alpha, beta, F3x4, eq_freqs
     return tree, alpha, beta, f3x4, eq_freqs
 end
