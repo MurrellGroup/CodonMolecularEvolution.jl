@@ -64,9 +64,10 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1)
     end
     maxi_shift = maximum(LL_matrix,dims = 1)
     prob_matrix = exp.(LL_matrix .- maxi_shift)
-    prob_matrix ./= sum(prob_matrix,dims = 1)
+    sum_shift = sum(prob_matrix,dims = 1)
+    prob_matrix ./= sum_shift
 
-    return prob_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, sum(maxi_shift)
+    return prob_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, sum(maxi_shift .+ log.(sum_shift))
 end
 
 function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
@@ -95,7 +96,8 @@ end
 =#
 
 
-function FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0)
+function FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, analysis_name;
+                                posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1)
     pos_filt = beta_ind_vec .> alpha_ind_vec
     pur_filt = beta_ind_vec .< alpha_ind_vec
     weighted_mat = con_lik_matrix .* θ
@@ -107,25 +109,38 @@ function FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_i
 
     weighted_sites = reshape(weighted_mat, 20,20,:);
     posterior_alpha = sum(weighted_sites, dims = 1)[1,:,:]
-    posterior_beta = sum(weighted_sites, dims = 2)[:,1,:];
+    posterior_beta = sum(weighted_sites, dims = 2)[:,1,:]
 
     grid_values = beta_vec[1:Int(sqrt(length(beta_vec)))]
-    sites_to_plot = findall(positive_posteriors .> posterior_threshold)
-    plot()
-    num_plot = length(sites_to_plot)
     grd = round.(grid_values, digits = 3)
-    FUBAR_violin_plot(sites_to_plot, [volume_scaling .* posterior_alpha[:,[i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2)
-    FUBAR_violin_plot(sites_to_plot, [volume_scaling .* posterior_beta[:,[i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2)
-    plot!(size=(400, num_plot * 17 + 300), grid=false, left_margin=(num_plot/10+7)Plots.mm, bottom_margin=10Plots.mm)
-    savefig(analysis_name * "_violin_positive.pdf")
+
+    sites_to_plot = findall(positive_posteriors .> posterior_threshold)
+    num_plot = length(sites_to_plot)
+    if num_plot > 0
+        verbosity > 0 && println("$num_plot sites with positive selection above threshold.")
+        plot()
+        s = 0.5/max(maximum(posterior_alpha[:,sites_to_plot]),maximum(posterior_beta[:,sites_to_plot]))
+        FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:,[i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind = nothing)
+        FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:,[i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind = nothing)
+        plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
+        savefig(analysis_name * "_violin_positive.pdf")
+    else
+        verbosity > 0 && println("No sites with positive selection above threshold.")
+    end
 
     sites_to_plot = findall(purifying_posteriors .> posterior_threshold)
-    plot()
     num_plot = length(sites_to_plot)
-    FUBAR_violin_plot(sites_to_plot, [volume_scaling .* posterior_alpha[:,[i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2)
-    FUBAR_violin_plot(sites_to_plot, [volume_scaling .* posterior_beta[:,[i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2)
-    plot!(size=(400, num_plot * 17 + 300), grid=false, left_margin=(num_plot/10+7)Plots.mm, bottom_margin=10Plots.mm)
-    savefig(analysis_name * "_violin_purifying.pdf")
+    if num_plot > 0
+        verbosity > 0 && println("$num_plot sites with purifying selection above threshold.")
+        plot()
+        s = 0.5/max(maximum(posterior_alpha[:,sites_to_plot]),maximum(posterior_beta[:,sites_to_plot]))
+        FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:,[i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind = nothing)
+        FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:,[i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind = nothing)        
+        plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
+        savefig(analysis_name * "_violin_purifying.pdf")
+    else
+        verbosity > 0 && println("No sites with purifying selection above threshold.")
+    end
 
     gridplot(alpha_ind_vec,beta_ind_vec,grid_values,θ; title = "Posterior mean θ")
     savefig(analysis_name * "_θ.pdf")
@@ -165,7 +180,7 @@ function FUBAR(seqnames, seqs, treestring, outpath;
     #end
     
     verbosity > 0 && println("Step 5: Tabulating results and saving plots.")
-    df_results = FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, outpath, posterior_threshold = pos_thresh)
+    df_results = FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df_results, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec)
 end

@@ -54,21 +54,26 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
         c = (v_offset .+ center_line .+ (-0.5 .* group1_volumes[i]))
 
         bar!(a, b + c, fillto=c, linewidth=0, bar_edges=false, linealpha=0.0, ylims=(minimum(c) - 1, 0), color=color, alpha=alpha, label=:none)
-
     end
 
-    bar!([1], [1], bottom=[1000], color=color, alpha=alpha, label=tag, linewidth=0, bar_edges=false, linealpha=0.0)
-    bar!(yticks=(ypos, sites))
-    bar!(xticks=((1:length(omegagrid)), omegagrid), xrotation=90)
-    bar!(ylabel=y_label, xlabel=x_label)
+    bar!([-10], [1], bottom=[1000], color=color, alpha=alpha, label=tag, linewidth=0, bar_edges=false, linealpha=0.0)
+    bar!(yticks=(ypos, ["       " for _ in sites]), xticks=((1:length(omegagrid)), ["       " for _ in 1:length(omegagrid)]), xrotation=90)
+    annotate!(length(omegagrid)/2, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
+    annotate!(-4.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
 
-    bar!(ylim=(minimum(ypos) - 0.5, maximum(ypos) + 0.5))
+    bar!(ylim=(minimum(ypos) - 0.5, maximum(ypos) + 0.5), xlim = (0, length(omegagrid) + 1))
     if plot_legend
         plot!(
-            legend=:outertop,
+            legend=(0.5, 1+1.5/(50+length(sites))),
             legendcolumns=legend_ncol,
-            shadow=true, fancybox=true, bbox_to_anchor=(0.5, 1.01)
+            shadow=true, fancybox=true,
         )
+    end
+    for i in 1:length(sites)
+        annotate!(-0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
+    end
+    for i in 1:length(omegagrid) 
+        annotate!(i, -length(sites)/2-0.55 -length(sites)/3000, Plots.text("$(omegagrid[i])", "black", :right, 9, rotation=90))
     end
 end
 
