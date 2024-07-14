@@ -38,11 +38,11 @@ end
 sites(p::LazyPartition{CodonPartition}) = p.memoryblocks[1].sites
 sites(p::CodonPartition) = p.sites
 
-#foreground_grid and background_grid control the number of categories below 1.0
+
 function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1)
     verbosity > 0 && println("Step 3: Calculating conditional likelihoods.")
 
-    grid_values = 10 .^ (-1.35:0.152:1.6) .- 0.0423174293933042
+    grid_values = 10 .^ (-1.35:0.152:1.6) .- 0.0423174293933042 #Possibly should be an argument
 
     LL_matrix = zeros(length(grid_values)^2,sites(tree.message[1]));
     alpha_vec = zeros(length(grid_values)^2);
@@ -76,25 +76,6 @@ function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     LDAθ = weightEM(con_lik_matrix, ones(L)./L, conc = conc, iters = iters);
     return LDAθ
 end
-
-#=
-        FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot], grd, tag="ω1", color=tag_colors[1])
-        FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot], grd, tag="ω2", color=tag_colors[2], x_label="ω")
-        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
-
-        savefig(analysis_name * "_violin_omegas.pdf")
-=#
-
-#=
-weighted_mat = prob_matrix .* LDAθ
-for site in 1:size(prob_matrix)[2]
-    pos = sum(weighted_mat[beta_vec .> alpha_vec,site])/sum(weighted_mat[:,site])
-    if pos > 0.9
-        println("Site $(site): P(β>α)=$(round(pos,digits = 4))")
-    end
-end
-=#
-
 
 function FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, analysis_name;
                                 posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1)
