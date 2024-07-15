@@ -12,13 +12,14 @@ include("../test/benchmark_difFUBAR.jl")
 
 include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
-
+include("smoothFUBAR/restrictedFUBAR.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
     difFUBARTreesurgery,
     difFUBARTreesurgeryAndParallel,
     FUBAR,
-    smoothFUBAR
+    smoothFUBAR,
+    restricted_smoothFUBAR
 
 end
