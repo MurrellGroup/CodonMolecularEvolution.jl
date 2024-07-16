@@ -1,36 +1,28 @@
-struct LogPosteriorRFF{T} # Quite sure this is not needed since we already have it in smoothFUBAR.jl
-    gridcoords::Array{T,2}
-    W::Array{T,2}
-    condlik::Array{T,2}
-    dim::Int
-    unflatten::Function
-    posmask::Vector{T}
-    function LogPosteriorRFF(gridcoords::Array{T,2}, condlik::Array{T,2}, K::Int, σ::T, unflatten, posmask) where T
-        W = randn(T, 2, K ÷ 2) * σ * T(2π)
-        new{T}(gridcoords, W, condlik, K, unflatten, posmask)
-    end
-end
+# struct LogPosteriorRFF{T} # Quite sure this is not needed since we already have it in smoothFUBAR.jl
+#    gridcoords::Array{T,2}
+#    W::Array{T,2}
+#    condlik::Array{T,2}
+#    dim::Int
+#    unflatten::Function
+#    posmask::Vector{T}
+#    function LogPosteriorRFF(gridcoords::Array{T,2}, condlik::Array{T,2}, K::Int, σ::T, unflatten, posmask) where T
+#        W = randn(T, 2, K ÷ 2) * σ * T(2π)
+#        new{T}(gridcoords, W, condlik, K, unflatten, posmask)
+#    end
+# end
 
 
 function restricted_thetas(ω,ψ, LP::LogPosteriorRFF)
     WtX = LP.W'LP.gridcoords
     FF = [cos.(WtX); sin.(WtX)]
 
-    flat_unrestricted_thetas = (ω' * FF)[:]
-
-    matrix_dimension = Integer(sqrt(length(flat_unrestricted_thetas)))
-
-    unrestricted_thetas = reshape(flat_unrestricted_thetas,matrix_dimension, matrix_dimension)
+    unrestricted_thetas = (ω' * FF)[:]
     
     interpolated_ψ = softmask(ψ)
 
-    lower_restriction_matrix = (UpperTriangular(reshape(ones(matrix_dimension^2),matrix_dimension,matrix_dimension))) 
-    upper_restriction_matrix = LowerTriangular(reshape(interpolated_ψ .* ones(matrix_dimension^2),matrix_dimension,matrix_dimension)) .- diagm(interpolated_ψ .* ones(matrix_dimension)) # So that we do not OW the diag
-    restriction_matrix = lower_restriction_matrix + upper_restriction_matrix
+    masked_thetas = (LP.posmask .* interpolated_ψ .* unrestricted_thetas) .+ ((1 .- LP.posmask) .* unrestricted_thetas)
 
-    restricted_matrix = restriction_matrix .* unrestricted_thetas
-
-    return softmax(restricted_matrix[:])
+    return softmax(masked_thetas)
 
 end
 
@@ -39,21 +31,13 @@ function restricted_LL(ω,ψ, LP::LogPosteriorRFF)
     return sum(log.(theta_vec' * LP.condlik))
 end
 
-#=
-#Mixture LL with and without positive selection. MCMC chain doesn't mix nicely.
-function LL(ω, LP::LogPosteriorRFF)
-    theta_vec = thetas(ω, LP)
-    nopos_theta_vec = theta_vec .* nonposmask
-    nopos_theta_vec = nopos_theta_vec ./ sum(nopos_theta_vec)
-    return logsumexp(sum(log.(theta_vec' * LP.condlik))-0.6931471805599453,sum(log.(nopos_theta_vec' * LP.condlik))-0.6931471805599453)
-end
-=#
+
 
 function (problem::LogPosteriorRFF)(θ)
     ω, ψ = problem.unflatten(θ)
     loglikelihood = restricted_LL(ω,ψ, problem)
     #loglikelihood = 1.0 #if you just want to sample from the prior
-    logprior = sum(logpdf.(Normal(0.0,1.0),ω)) + logpdf(Normal(0.0,1.0),ψ)
+    logprior = sum(logpdf.(Normal(0.0,1),ω)) + logpdf(Normal(0.0,1.0),ψ)
     loglikelihood + logprior
 end
 
@@ -88,8 +72,7 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
     initial_ψ = randn()
     initial_θ = (ω = ωeights, ψ = initial_ψ)
     flat_initial_θ, unflatten = value_flatten(initial_θ)
-    println(length(flat_initial_θ))
-    # K + 1 is almost certainly wrong
+
     ℓπ = LogPosteriorRFF(gridcoords, con_lik_matrix, K + 1, sigma, unflatten, beta_ind_vec .> alpha_ind_vec)
     num_params = length(flat_initial_θ)
     model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:Zygote), ℓπ))
@@ -115,15 +98,22 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
     plot(LL_offset .+ [samples[i].stat.log_density for i in 1:length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
 
+    plot(softmask.([samples[i].z.θ[K + 1] for i in 1:length(samples)]), label = "Trace of mixing parameter ψ", size = (700,350), xlabel = "Iterations")
+    savefig(analysis_name * "_mixing_parameter_trace.pdf")
+
+
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in 101:length(samples)]);
 
     #Plotting the MCMC trace of θ values (induced by the mixture of gaussians) for 20 grid points (from the largest to the smallest)
     inds_to_plot = sortperm(posterior_mean_θ, rev = true)[(1:(Int(sqrt(length(alpha_ind_vec))))).^2]
+
+    
+
     plot(stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])[inds_to_plot,:]',
         legend = :none, alpha = 0.5, size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_posterior_θ_trace.pdf")
 
-    return posterior_mean_θ
+    return posterior_mean_θ, samples
 end
 
 function restricted_smoothFUBAR(seqnames, seqs, treestring, outpath;
@@ -133,10 +123,10 @@ function restricted_smoothFUBAR(seqnames, seqs, treestring, outpath;
     con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
         pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
 
-    θ = restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec, beta_vec, LL_offset, outpath, verbosity=verbosity, HMC_samples = HMC_samples, K = K, sigma = sigma)
-    
+    θ, samples = restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec, beta_vec, LL_offset, outpath, verbosity=verbosity, HMC_samples = HMC_samples, K = K, sigma = sigma)
+
     verbosity > 0 && println("Step 5: Tabulating results and saving plots.")
     df_results = FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, outpath, posterior_threshold = pos_thresh)
     #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df_results, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec)
+    return df_results, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec), samples
 end

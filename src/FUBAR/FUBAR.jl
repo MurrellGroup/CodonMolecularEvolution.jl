@@ -77,6 +77,7 @@ function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     return LDAθ
 end
 
+
 function FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, analysis_name;
                                 posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1)
     pos_filt = beta_ind_vec .> alpha_ind_vec

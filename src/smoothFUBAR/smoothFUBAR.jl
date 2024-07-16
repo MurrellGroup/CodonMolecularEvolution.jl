@@ -107,9 +107,9 @@ function FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec, beta_vec, 
 end
 
 function smoothFUBAR(seqnames, seqs, treestring, outpath;
-    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
+    pos_thresh=0.95, verbosity=0, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
     K = 50, sigma = 0.03, HMC_samples = 500)
-    
+   
     con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
         pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
 
@@ -120,3 +120,4 @@ function smoothFUBAR(seqnames, seqs, treestring, outpath;
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df_results, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec)
 end
+
