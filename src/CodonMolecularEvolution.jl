@@ -13,6 +13,8 @@ include("../test/benchmark_difFUBAR.jl")
 include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
 
+include("simulations/alphabeta/alphabeta.jl")
+
 export 
     difFUBARBaseline,
     difFUBARParallel,
