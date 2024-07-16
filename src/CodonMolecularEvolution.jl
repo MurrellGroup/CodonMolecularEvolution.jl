@@ -1,7 +1,7 @@
 module CodonMolecularEvolution
 
 using FASTX, MolecularEvolution, Measures, Compose, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra
-using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD
+using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, DelimitedFiles
 
 abstract type difFUBARGrid end
 
@@ -13,6 +13,7 @@ include("../test/benchmark_difFUBAR.jl")
 include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
 include("smoothFUBAR/restrictedFUBAR.jl")
+include("simulations/alphabeta/alphabeta.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -20,6 +21,8 @@ export
     difFUBARTreesurgeryAndParallel,
     FUBAR,
     smoothFUBAR,
-    restricted_smoothFUBAR
+    restricted_smoothFUBAR,
+    standard_tree_sim,
+    sim_alphabeta_seqs
 
 end

@@ -1,68 +1,73 @@
-# struct LogPosteriorRFF{T} # Quite sure this is not needed since we already have it in smoothFUBAR.jl
-#    gridcoords::Array{T,2}
-#    W::Array{T,2}
-#    condlik::Array{T,2}
-#    dim::Int
-#    unflatten::Function
-#    posmask::Vector{T}
-#    function LogPosteriorRFF(gridcoords::Array{T,2}, condlik::Array{T,2}, K::Int, σ::T, unflatten, posmask) where T
-#        W = randn(T, 2, K ÷ 2) * σ * T(2π)
-#        new{T}(gridcoords, W, condlik, K, unflatten, posmask)
-#    end
-# end
+struct LogPosteriorRestrictedRFF{T} # Quite sure this is not needed since we already have it in smoothFUBAR.jl
+    gridcoords::Array{T,2}
+    W::Array{T,2}
+    condlik::Array{T,2}
+    dim::Int
+    unflatten::Function
+    posmask::Vector{T}
+
+    # parameters for normal prior on ψ
+    μψ::Real
+    σψ::Real
+
+    function LogPosteriorRestrictedRFF(gridcoords::Array{T,2}, condlik::Array{T,2}, K::Int, σ::T, unflatten, posmask, μψ::Real, σψ::Real) where T
+        W = randn(T, 2, K ÷ 2) * σ * T(2π)
+        new{T}(gridcoords, W, condlik, K, unflatten, posmask, μψ, σψ)
+    end
+ end
 
 
-function restricted_thetas(ω,ψ, LP::LogPosteriorRFF)
+function restricted_thetas(ω,ψ, LP::LogPosteriorRestrictedRFF)
     WtX = LP.W'LP.gridcoords
     FF = [cos.(WtX); sin.(WtX)]
 
-    unrestricted_thetas = (ω' * FF)[:]
+    unrestricted_thetas = softmax((ω' * FF)[:])
     
-    interpolated_ψ = softmask(ψ)
+    interpolated_ψ = softmask2(ψ)
 
     masked_thetas = (LP.posmask .* interpolated_ψ .* unrestricted_thetas) .+ ((1 .- LP.posmask) .* unrestricted_thetas)
 
-    return softmax(masked_thetas)
+
+
+    return masked_thetas ./ sum(masked_thetas)
 
 end
 
-function restricted_LL(ω,ψ, LP::LogPosteriorRFF)
+function restricted_LL(ω,ψ, LP::LogPosteriorRestrictedRFF)
     theta_vec = restricted_thetas(ω,ψ, LP)
     return sum(log.(theta_vec' * LP.condlik))
 end
 
 
 
-function (problem::LogPosteriorRFF)(θ)
+function (problem::LogPosteriorRestrictedRFF)(θ)
     ω, ψ = problem.unflatten(θ)
     loglikelihood = restricted_LL(ω,ψ, problem)
     #loglikelihood = 1.0 #if you just want to sample from the prior
-    logprior = sum(logpdf.(Normal(0.0,1),ω)) + logpdf(Normal(0.0,1.0),ψ)
+    logprior = sum(logpdf.(Normal(0.0,1),ω)) + logpdf(Normal(problem.μψ,problem.σψ),ψ)
     loglikelihood + logprior
 end
 
-LogDensityProblems.logdensity(p::LogPosteriorRFF, θ) = p(θ)
-LogDensityProblems.dimension(p::LogPosteriorRFF) = p.dim
-LogDensityProblems.capabilities(::Type{LogPosteriorRFF}) = LogDensityProblems.LogDensityOrder{0}()
+LogDensityProblems.logdensity(p::LogPosteriorRestrictedRFF, θ) = p(θ)
+LogDensityProblems.dimension(p::LogPosteriorRestrictedRFF) = p.dim
+LogDensityProblems.capabilities(::Type{LogPosteriorRestrictedRFF}) = LogDensityProblems.LogDensityOrder{0}()
 
 #Helper function to viz theta surface
-function thetas(ℓπ::LogPosteriorRFF, flatθ)
+function thetas(ℓπ::LogPosteriorRestrictedRFF, flatθ)
     ω, ψ = ℓπ.unflatten(flatθ)
     return restricted_thetas(ω,ψ, ℓπ)
 end
 
-#Activation function for continuous supression of positive selection, probably don't need since it is already in smoothFUBAR.jl
-# function softmask(x::T) where T
-#    if x < 0
-#        return T(0)
-#    elseif x > 1
-#        return T(1)
-#    else
-#        return T(1/2 + sin(x*pi - pi/2)/2)
-#    end
-# end
 
-function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec, beta_vec, LL_offset, analysis_name; HMC_samples = 500, K = 50, sigma = 0.03, verbosity=1)
+function softmask2(x::T) where T
+    if x < 0
+        return T(0)
+    else
+        return T(log(1+x^3))
+    end
+end
+
+function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec, beta_vec, LL_offset, analysis_name; HMC_samples = 500, K = 50, sigma = 0.03,μψ = 0.5, σψ = 0.5, verbosity=1)
     verbosity > 0 && println("Step 4: Estimating posterior surface by HMC.")
 
     gridcoords = Matrix{Float64}(hcat(alpha_ind_vec, beta_ind_vec)')
@@ -73,7 +78,7 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
     initial_θ = (ω = ωeights, ψ = initial_ψ)
     flat_initial_θ, unflatten = value_flatten(initial_θ)
 
-    ℓπ = LogPosteriorRFF(gridcoords, con_lik_matrix, K + 1, sigma, unflatten, beta_ind_vec .> alpha_ind_vec)
+    ℓπ = LogPosteriorRestrictedRFF(gridcoords, con_lik_matrix, K + 1, sigma, unflatten, beta_ind_vec .> alpha_ind_vec, μψ, σψ)
     num_params = length(flat_initial_θ)
     model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:Zygote), ℓπ))
     n_samples, n_adapts = HMC_samples, 200
@@ -98,7 +103,20 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
     plot(LL_offset .+ [samples[i].stat.log_density for i in 1:length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
 
-    plot(softmask.([samples[i].z.θ[K + 1] for i in 1:length(samples)]), label = "Trace of mixing parameter ψ", size = (700,350), xlabel = "Iterations")
+    ψ_samples = [samples[i].z.θ[K + 1] for i in 1:length(samples)]
+
+    ψ_positive_given_data = sum(ψ_samples .> 0) / length(ψ_samples)
+    ψ_negative_given_data = 1 - ψ_positive_given_data
+    ψ_positive_prior = 1 - cdf(Normal(μψ, σψ),0)
+    ψ_negative_prior = 1 - ψ_positive_prior
+
+    bayes_factor = (ψ_positive_given_data / ψ_negative_given_data ) * (ψ_negative_prior / ψ_positive_prior)
+
+    to_write = "BF="*string(bayes_factor)*"\nP(ψ > 0 | data) = "*string(ψ_positive_given_data)
+
+    write(analysis_name*"_psi_chain_samples.txt",to_write)
+
+    plot(softmask2.(ψ_samples), label = "Trace of mixing parameter ψ", size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_mixing_parameter_trace.pdf")
 
 
@@ -116,7 +134,7 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
     return posterior_mean_θ, samples
 end
 
-function restricted_smoothFUBAR(seqnames, seqs, treestring, outpath;
+function test_positive_selection_smoothFUBAR(seqnames, seqs, treestring, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
     K = 50, sigma = 0.03, HMC_samples = 500)
    
