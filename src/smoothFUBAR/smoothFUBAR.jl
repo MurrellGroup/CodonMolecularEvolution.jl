@@ -1,20 +1,20 @@
 struct LogPosteriorRFF{T} 
     gridcoords::Array{T,2}
-    W::Array{T,2}
+    FF::Array{T,2}
     condlik::Array{T,2}
     dim::Int
     unflatten::Function
     posmask::Vector{T}
     function LogPosteriorRFF(gridcoords::Array{T,2}, condlik::Array{T,2}, K::Int, σ::T, unflatten, posmask) where T
         W = randn(T, 2, K ÷ 2) * σ * T(2π)
-        new{T}(gridcoords, W, condlik, K, unflatten, posmask)
+        WtX = W'gridcoords
+        FF = [cos.(WtX); sin.(WtX)]
+        new{T}(gridcoords, FF, condlik, K, unflatten, posmask)
     end
 end
 
 function thetas(ω, LP::LogPosteriorRFF)
-    WtX = LP.W'LP.gridcoords
-    FF = [cos.(WtX); sin.(WtX)]
-    return softmax((ω' * FF)[:])
+    return softmax((ω' * LP.FF)[:])
 end
 
 function LL(ω, LP::LogPosteriorRFF)
