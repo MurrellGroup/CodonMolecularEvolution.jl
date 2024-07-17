@@ -1,6 +1,5 @@
 struct LogPosteriorRestrictedRFF{T} # Quite sure this is not needed since we already have it in smoothFUBAR.jl
-    gridcoords::Array{T,2}
-    W::Array{T,2}
+    FF::Array{T,2}
     condlik::Array{T,2}
     dim::Int
     unflatten::Function
@@ -12,16 +11,17 @@ struct LogPosteriorRestrictedRFF{T} # Quite sure this is not needed since we alr
 
     function LogPosteriorRestrictedRFF(gridcoords::Array{T,2}, condlik::Array{T,2}, K::Int, σ::T, unflatten, posmask, μψ::Real, σψ::Real) where T
         W = randn(T, 2, K ÷ 2) * σ * T(2π)
-        new{T}(gridcoords, W, condlik, K, unflatten, posmask, μψ, σψ)
+        WtX = W' * gridcoords
+        FF = [cos.(WtX); sin.(WtX)]
+        new{T}(FF, condlik, K, unflatten, posmask, μψ, σψ)
     end
  end
 
 
 function restricted_thetas(ω,ψ, LP::LogPosteriorRestrictedRFF)
-    WtX = LP.W'LP.gridcoords
-    FF = [cos.(WtX); sin.(WtX)]
+    
 
-    unrestricted_thetas = softmax((ω' * FF)[:])
+    unrestricted_thetas = softmax((ω' * LP.FF)[:])
     
     interpolated_ψ = softmask2(ψ)
 
@@ -92,16 +92,16 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
         nadapts = n_adapts,
         initial_params = flat_initial_θ,
     )
-    anim = @animate for i ∈ (n_adapts+1):1:length(samples)
-        gridplot(alpha_ind_vec,beta_ind_vec,grid_values,thetas(ℓπ, samples[i].z.θ))
-    end
-    gif(anim, analysis_name * "_posterior_θ_samples.gif", fps = 15)
+    # anim = @animate for i ∈ (n_adapts+1):1:length(samples)
+    #     gridplot(alpha_ind_vec,beta_ind_vec,grid_values,thetas(ℓπ, samples[i].z.θ))
+    # end
+    # gif(anim, analysis_name * "_posterior_θ_samples.gif", fps = 15)
 
-    plot(LL_offset .+ [samples[i].stat.log_density for i in (n_adapts+1):length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
-    savefig(analysis_name * "_log_posterior_trace.pdf")
+    # plot(LL_offset .+ [samples[i].stat.log_density for i in (n_adapts+1):length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
+    # savefig(analysis_name * "_log_posterior_trace.pdf")
 
-    plot(LL_offset .+ [samples[i].stat.log_density for i in 1:length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
-    savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
+    # plot(LL_offset .+ [samples[i].stat.log_density for i in 1:length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
+    # savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
 
     ψ_samples = [samples[i].z.θ[K + 1] for i in 1:length(samples)]
 
@@ -116,20 +116,20 @@ function restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec,
 
     write(analysis_name*"_psi_chain_samples.txt",to_write)
 
-    plot(softmask2.(ψ_samples), label = "Trace of mixing parameter ψ", size = (700,350), xlabel = "Iterations")
-    savefig(analysis_name * "_mixing_parameter_trace.pdf")
+    # plot(softmask2.(ψ_samples), label = "Trace of mixing parameter ψ", size = (700,350), xlabel = "Iterations")
+    # savefig(analysis_name * "_mixing_parameter_trace.pdf")
 
 
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in 101:length(samples)]);
 
     #Plotting the MCMC trace of θ values (induced by the mixture of gaussians) for 20 grid points (from the largest to the smallest)
-    inds_to_plot = sortperm(posterior_mean_θ, rev = true)[(1:(Int(sqrt(length(alpha_ind_vec))))).^2]
+    # inds_to_plot = sortperm(posterior_mean_θ, rev = true)[(1:(Int(sqrt(length(alpha_ind_vec))))).^2]
 
     
 
-    plot(stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])[inds_to_plot,:]',
-        legend = :none, alpha = 0.5, size = (700,350), xlabel = "Iterations")
-    savefig(analysis_name * "_posterior_θ_trace.pdf")
+    # plot(stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])[inds_to_plot,:]',
+    #    legend = :none, alpha = 0.5, size = (700,350), xlabel = "Iterations")
+    # savefig(analysis_name * "_posterior_θ_trace.pdf")
 
     return posterior_mean_θ, samples
 end
@@ -144,7 +144,7 @@ function test_positive_selection_smoothFUBAR(seqnames, seqs, treestring, outpath
     θ, samples = restricted_FUBAR_HMCfitRFF(con_lik_matrix, alpha_ind_vec, beta_ind_vec, beta_vec, LL_offset, outpath, verbosity=verbosity, HMC_samples = HMC_samples, K = K, sigma = sigma)
 
     verbosity > 0 && println("Step 5: Tabulating results and saving plots.")
-    df_results = FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, outpath, posterior_threshold = pos_thresh)
+    # df_results = FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, outpath, posterior_threshold = pos_thresh)
     #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df_results, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec), samples
+    return Nothing, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec), samples
 end
