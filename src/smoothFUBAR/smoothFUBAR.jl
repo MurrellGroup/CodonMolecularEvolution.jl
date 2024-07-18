@@ -34,15 +34,16 @@ struct LogPosteriorRFF{T, H}
     posmask::Vector{T}
     posneginfmask::Vector{T} #0 where beta>alpha, otherwise -Inf
     nonposneginfmask::Vector{T} #0 where beta<=alpha, otherwise -Inf
-    hyperpriors::NamedTuple
-    function LogPosteriorRFF(method::H, f::FUBARgrid{T}, K::Int, σ::T, initial_θ; hyperpriors = NamedTuple(())) where T where H
+    priors::NamedTuple
+    function LogPosteriorRFF(method::H, f::FUBARgrid{T}, K::Int, σ::T, initial_θ, priors) where T where H
+        @assert Set(keys(priors)) == Set(keys(initial_θ))
         flat_initial_θ, unflatten = value_flatten(initial_θ)
         gridcoords = Matrix{T}(hcat(f.alpha_ind_vec, f.beta_ind_vec)')
         posmask = f.beta_ind_vec .> f.alpha_ind_vec
         W = randn(T, 2, K ÷ 2) * σ * T(2π)
         WtX = W'gridcoords
         FF = [cos.(WtX); sin.(WtX)]
-        new{T, H}(gridcoords, FF, f.cond_lik_matrix, length(flat_initial_θ), unflatten, flat_initial_θ, posmask, log.(posmask), log.(1 .- posmask), hyperpriors)
+        new{T, H}(gridcoords, FF, f.cond_lik_matrix, length(flat_initial_θ), unflatten, flat_initial_θ, posmask, log.(posmask), log.(1 .- posmask), priors)
     end
 end
 
@@ -52,6 +53,8 @@ function loglik(θ, LP::LogPosteriorRFF)
     theta_vec = thetas(θ, LP)
     return sum(log.(theta_vec' * LP.condlik))
 end
+
+logprior(θ, LP::LogPosteriorRFF) = sum([sum(logpdf.((LP.priors[s],),θ[s])) for s in keys(θ)])
 
 #Helper function to viz theta surface
 thetas(ℓπ::LogPosteriorRFF, flatθ) = thetas(ℓπ.unflatten(flatθ), ℓπ)
@@ -101,6 +104,9 @@ function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapt
     savefig(analysis_name * "_posterior_θ_trace.pdf")
 end
 
+#Generic other_plots that does nothing - will be overridden when needed
+other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts) = nothing
+
 #HMC sampling:
 function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_samples = 500, n_adapts = 200, K = 50, sigma = 0.03, verbosity=1)
     verbosity > 0 && println("Step 4: Estimating posterior surface by HMC.")
@@ -126,24 +132,23 @@ end
 #RFF FUBAR - no pos selection control
 struct FUBARsmooth <: HMC_FUBAR end
 thetas(θ, LP::LogPosteriorRFF{Float64, FUBARsmooth}) = softmax(((θ.ω)' * LP.FF)[:])
-logprior(θ, LP::LogPosteriorRFF{Float64, FUBARsmooth}) = sum(logpdf.(Normal(0.0,1.0),θ.ω))
-other_plots(LP::LogPosteriorRFF{Float64, FUBARsmooth}, samples, f, analysis_name, n_adapts) = nothing
-model_init(m::FUBARsmooth, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K),))
+model_init(m::FUBARsmooth, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K),), (ω = Normal(0.0,1.0),))
 export FUBARsmooth
 
 #Generics for methods that use a smooth interpolation T(φpre) to control positive selection, where φpre<=0 means no positive selection
 abstract type WeightedHMC_FUBAR <: HMC_FUBAR end
 
 function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name, n_adapts) where M<:WeightedHMC_FUBAR
+    prior_possel = 1 - cdf(LP.priors.φpre,0)
     poschain = [LP.unflatten(s.z.θ).φpre > 0 for s in samples]
     pospos = sum(poschain/length(poschain))
-    ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4))"
+    bayesfactor = pospos/(1-pospos) * (1-prior_possel)/prior_possel
+    ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4)). BF = $(round(bayesfactor,sigdigits=4))"
     plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr)
     plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr)
     println(ppstr)
 end
-logprior(θ, LP::LogPosteriorRFF{Float64, <:WeightedHMC_FUBAR}) = sum(logpdf.(Normal(0.0,1.0),θ.ω)) + logpdf(Normal(0.5,0.5),θ.φpre)
-model_init(m::WeightedHMC_FUBAR, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K), φpre = 0.5))
+model_init(m::WeightedHMC_FUBAR, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K), φpre = 0.5),(ω = Normal(0.0,1.0), φpre = Normal(0.5,0.5)))
 
 #Where φ is the proportion of sites where beta>alpha
 struct FUBARweightedpos <: WeightedHMC_FUBAR end
