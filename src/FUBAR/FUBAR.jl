@@ -1,16 +1,15 @@
-#We should maybe consider something like this so we can just pass around a FUBAR struct and everything stays together:
-#=
-struct FUBAR
-    grid_values::Vector{Float64}
-    alpha_vec::Vector{Float64}
-    beta_vec::Vector{Float64}
+#Need to roll this into original FUBAR
+struct FUBARgrid{T}
+    grid_values::Vector{T}
+    alpha_vec::Vector{T}
+    beta_vec::Vector{T}
     alpha_ind_vec::Vector{Int64}
     beta_ind_vec::Vector{Int64}
-    cond_lik_matrix::Matrix{Float64}
+    cond_lik_matrix::Matrix{T}
+    LL_offset::T
     sites::Int64
 end
-=#
-    
+
 
 function gridplot(alpha_ind_vec,beta_ind_vec,grid_values,θ; title = "")
     scatter(alpha_ind_vec,beta_ind_vec, zcolor = θ, c = :darktest, colorbar = false,
@@ -66,8 +65,8 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1)
     prob_matrix = exp.(LL_matrix .- maxi_shift)
     sum_shift = sum(prob_matrix,dims = 1)
     prob_matrix ./= sum_shift
-
-    return prob_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, sum(maxi_shift .+ log.(sum_shift))
+    LLO = sum(maxi_shift .+ log.(sum_shift))
+    return FUBARgrid(grid_values, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, prob_matrix, LLO, size(prob_matrix,2))
 end
 
 function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
@@ -77,8 +76,9 @@ function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     return LDAθ
 end
 
-function FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, analysis_name;
-                                posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1)
+function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1)
+    verbosity > 0 && println("Step 5: Tabulating results and saving plots.")
+    con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec = f.cond_lik_matrix, f.alpha_vec, f.beta_vec, f.alpha_ind_vec, f.beta_ind_vec
     pos_filt = beta_ind_vec .> alpha_ind_vec
     pur_filt = beta_ind_vec .< alpha_ind_vec
     weighted_mat = con_lik_matrix .* θ
@@ -143,8 +143,7 @@ function FUBAR_init2grid(seqnames, seqs, treestring, outpath;
     analysis_name = outpath
     tree, analysis_name = FUBAR_init(analysis_name, treestring, exports=exports, verbosity=verbosity)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
-    con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset = FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity)
-    return con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset
+    return FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity)
 end
 
 export FUBAR_init2grid, FUBAR_tabulate_from_θ
@@ -152,16 +151,16 @@ export FUBAR_init2grid, FUBAR_tabulate_from_θ
 function FUBAR(seqnames, seqs, treestring, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
     method = (sampler = :DirichletEM, concentration = 0.5, iterations = 2500))
+    fubar = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
+    pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
     
-    con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
-        pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
+    con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset = fubar.cond_lik_matrix, fubar.alpha_vec, fubar.beta_vec, fubar.alpha_ind_vec, fubar.beta_ind_vec, fubar.cond_lik_matrix, fubar.LL_offset
 
     #if method.sampler == :DirichletEM
         θ = FUBAR_fitEM(con_lik_matrix, method.iterations, method.concentration)
     #end
     
-    verbosity > 0 && println("Step 5: Tabulating results and saving plots.")
-    df_results = FUBAR_tabulate_from_θ(con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
+    df_results = FUBAR_tabulate_from_θ(θ, fubar, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
     #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df_results, (con_lik_matrix, θ, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec)
+    return df_results, (θ, fubar)
 end
