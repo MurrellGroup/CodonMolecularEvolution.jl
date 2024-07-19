@@ -49,7 +49,8 @@ function sim_alphabeta_seqs(alphavec::Vector{Float64}, betavec::Vector{Float64},
     eq_partition.state .= eq_freqs
     lazy_template = LazyPartition{CodonPartition}()
     internal_message_init!(singletree, lazy_template)
-    lazyprep!(singletree, eq_partition, direction=LazyDown(isleafnode))
+    direction = LazyDown(isleafnode)
+    lazyprep!(singletree, eq_partition, direction=direction)
 
     if scale_total_tree_neutral_expected_subs > 0.0
         total_bl = sum([n.branchlength for n in getnodelist(singletree)])
@@ -68,6 +69,7 @@ function sim_alphabeta_seqs(alphavec::Vector{Float64}, betavec::Vector{Float64},
         sample_down!(singletree, m)
         nucs_at_leaves = [n.message[1].obs for n in getleaflist(singletree)]
         push!(nucseq_collection, nucs_at_leaves)
+        lazyprep!(singletree, direction) #This is needed for successive sample_down! calls
     end
     nucseqs = prod(stack(nucseq_collection), dims = 2)[:]
     if outpath != ""
