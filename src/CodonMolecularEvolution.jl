@@ -12,7 +12,6 @@ include("../test/benchmark_difFUBAR.jl")
 
 include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
-include("smoothFUBAR/restrictedFUBAR.jl")
 include("simulations/alphabeta/alphabeta.jl")
 export 
     difFUBARBaseline,
@@ -21,9 +20,7 @@ export
     difFUBARTreesurgeryAndParallel,
     FUBAR,
     smoothFUBAR,
-    test_positive_selection_smoothFUBAR,
     standard_tree_sim,
-    sim_alphabeta_seqs,
-    generate_save_plots
+    sim_alphabeta_seqs
 
 end
