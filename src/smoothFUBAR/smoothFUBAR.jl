@@ -90,7 +90,7 @@ function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapt
     anim = @animate for i ∈ (n_adapts+1):1:length(samples)
         gridplot(f.alpha_ind_vec,f.beta_ind_vec,f.grid_values,thetas(ℓπ, samples[i].z.θ))
     end
-    gif(anim, analysis_name * "_posterior_θ_samples.mp4", fps = 15)
+    gif(anim, analysis_name * "_posterior_θ_samples.gif", fps = 15)
 
     plot(f.LL_offset .+ [samples[i].stat.log_density for i in (n_adapts+1):length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_log_posterior_trace.pdf")
@@ -113,9 +113,18 @@ function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_sam
     ℓπ = model_init(method, f, K, sigma)
     samples = HMCsample(ℓπ, HMC_samples, n_adapts = n_adapts)
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in n_adapts+1:length(samples)])
-    core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts)
-    other_plots(ℓπ, samples, f, analysis_name, n_adapts)
-    return posterior_mean_θ
+    # core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts)
+    # other_plots(ℓπ, samples, f, analysis_name, n_adapts)
+    return posterior_mean_θ, samples, ℓπ
+end
+
+function pre_init2grid(seqnames, seqs, treestring, outpath;
+    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
+    f = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
+        pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
+    
+    return f
+
 end
 
 #Main FUBAR call:
@@ -126,6 +135,13 @@ function smoothFUBAR(method::HMC_FUBAR, seqnames, seqs, treestring, outpath;
     θ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
     return df_results, (θ, f) #(tuple of partial calculations needed to re-run tablulate)
+end
+
+function smoothFUBAR_precomputed_f(method::HMC_FUBAR, f, outpath;
+    pos_thresh=0.95, verbosity=1, K = 50, sigma = 0.03, HMC_samples = 500)
+    θ, samples, ℓπ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
+    df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
+    return df_results, (θ, f), samples, ℓπ #(tuple of partial calculations needed to re-run tablulate)
 end
 
 #Functions specialized for each method:
