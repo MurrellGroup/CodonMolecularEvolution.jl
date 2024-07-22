@@ -1,5 +1,5 @@
-function plot_trace(samples, param, LP, outpath; transform = x->x, title = "")
-    plot([transform(LP.unflatten(s.z.θ)[param]) for s in samples], label = "$(param)", size = (700,350), xlabel = "Iterations", title = title)
+function plot_trace(samples, param, LP, outpath; transform = x->x, title = "", ylabel = "")
+    plot([transform(LP.unflatten(s.z.θ)[param]) for s in samples], size = (700,350), xlabel = "Iterations", title = title, ylabel = ylabel, legend = :none)
     savefig(outpath)
 end
 
@@ -140,12 +140,17 @@ abstract type WeightedHMC_FUBAR <: HMC_FUBAR end
 
 function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name, n_adapts) where M<:WeightedHMC_FUBAR
     prior_possel = 1 - cdf(LP.priors.φpre,0)
-    poschain = [LP.unflatten(s.z.θ).φpre > 0 for s in samples]
-    pospos = sum(poschain/length(poschain))
-    bayesfactor = pospos/(1-pospos) * (1-prior_possel)/prior_possel
+    poschain = [LP.unflatten(s.z.θ).φpre > 0 for s in samples[n_adapts+1:end]]
+    if all(poschain)
+        pospos = 1.0
+        bayesfactor = Inf
+    else
+        pospos = sum(poschain/length(poschain))
+        bayesfactor = pospos/(1-pospos) * (1-prior_possel)/prior_possel
+    end
     ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4)). BF = $(round(bayesfactor,sigdigits=4))"
-    plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr)
-    plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr)
+    plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr, ylabel = "φpre")
+    plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr, ylabel = "φ")
     println(ppstr)
 end
 model_init(m::WeightedHMC_FUBAR, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K), φpre = 0.5),(ω = Normal(0.0,1.0), φpre = Normal(0.5,0.5)))
