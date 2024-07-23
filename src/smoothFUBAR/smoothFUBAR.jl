@@ -129,7 +129,7 @@ end
 
 #Main FUBAR call:
 function smoothFUBAR(method::HMC_FUBAR, seqnames, seqs, treestring, outpath;
-    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50, sigma = 0.03, HMC_samples = 500)
+    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 150, sigma = 0.03, HMC_samples = 2500)
     f = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
         pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
     θ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
@@ -138,7 +138,7 @@ function smoothFUBAR(method::HMC_FUBAR, seqnames, seqs, treestring, outpath;
 end
 
 function smoothFUBAR_precomputed_f(method::HMC_FUBAR, f, outpath;
-    pos_thresh=0.95, verbosity=1, K = 50, sigma = 0.03, HMC_samples = 500)
+    pos_thresh=0.95, verbosity=1, K = 150, sigma = 0.03, HMC_samples = 2500)
     θ, samples, ℓπ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
     return df_results, (θ, f), samples, ℓπ #(tuple of partial calculations needed to re-run tablulate)
