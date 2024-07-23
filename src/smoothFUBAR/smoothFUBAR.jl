@@ -119,13 +119,12 @@ function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_sam
 end
 
 #Main FUBAR call:
-function smoothFUBAR(method::HMC_FUBAR, seqnames, seqs, treestring, outpath;
+function smoothFUBAR(method::HMC_FUBAR, f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50, sigma = 0.03, HMC_samples = 500)
-    f = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
-        pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
+    exports && init_path(outpath)
     θ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
-    return df_results, (θ, f) #(tuple of partial calculations needed to re-run tablulate)
+    return df_results, θ
 end
 
 #Functions specialized for each method:

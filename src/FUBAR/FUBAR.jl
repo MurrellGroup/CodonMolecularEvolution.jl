@@ -8,6 +8,8 @@ struct FUBARgrid{T}
     cond_lik_matrix::Matrix{T}
     LL_offset::T
     sites::Int64
+    grid_function::Function
+    LL_matrix::Matrix{T}
 end
 
 
@@ -20,28 +22,31 @@ function gridplot(alpha_ind_vec,beta_ind_vec,grid_values,θ; title = "")
     plot!(1:length(grid_values),1:length(grid_values),color = "grey", style = :dash, label = :none)
 end
 
-function FUBAR_init(outpath_and_file_prefix, treestring; verbosity=1, exports=true, disable_binarize=false, ladderize_tree = false)
-    analysis_name = outpath_and_file_prefix
+function init_path(analysis_name)
     splt = splitpath(analysis_name)[1:end-1]
     if length(splt) > 0
-        exports && mkpath(joinpath(splt))
+        mkpath(joinpath(splt))
     end
+end
+
+function FUBAR_init(treestring; verbosity=1, exports=true, disable_binarize=false, ladderize_tree = false)
+
     tree = gettreefromnewick(treestring, FelNode, disable_binarize=disable_binarize)
     if ladderize_tree
         MolecularEvolution.ladderize!(tree)
     end
     verbosity > 0 && println("Step 1: Initialization.")
-    return tree, analysis_name
+    return tree
 end
 
 sites(p::LazyPartition{CodonPartition}) = p.memoryblocks[1].sites
 sites(p::CodonPartition) = p.sites
 
 
-function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1)
+function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1, grid_function = x -> 10^(x/6.578947368421053 - 1.502) - 0.0423174293933042, num_grid_points = 20)
     verbosity > 0 && println("Step 3: Calculating conditional likelihoods.")
 
-    grid_values = 10 .^ (-1.35:0.152:1.6) .- 0.0423174293933042 #Possibly should be an argument
+    grid_values = grid_function.(1:num_grid_points)
 
     LL_matrix = zeros(length(grid_values)^2,sites(tree.message[1]));
     alpha_vec = zeros(length(grid_values)^2);
@@ -66,7 +71,7 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1)
     sum_shift = sum(prob_matrix,dims = 1)
     prob_matrix ./= sum_shift
     LLO = sum(maxi_shift .+ log.(sum_shift))
-    return FUBARgrid(grid_values, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, prob_matrix, LLO, size(prob_matrix,2))
+    return FUBARgrid(grid_values, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, prob_matrix, LLO, size(prob_matrix,2), grid_function, LL_matrix)
 end
 
 function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
@@ -89,6 +94,7 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
     alpha_pos_mean = sum(weighted_mat .* alpha_vec, dims = 1)[:]
 
     weighted_sites = reshape(weighted_mat, 20,20,:);
+    #Note: summing over first dim is summing over beta
     posterior_alpha = sum(weighted_sites, dims = 1)[1,:,:]
     posterior_beta = sum(weighted_sites, dims = 2)[:,1,:]
 
@@ -138,29 +144,83 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
 end
 
 #Packaging "everything before the conditional likelihoods"
-function FUBAR_init2grid(seqnames, seqs, treestring, outpath;
-    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
-    analysis_name = outpath
-    tree, analysis_name = FUBAR_init(analysis_name, treestring, exports=exports, verbosity=verbosity)
+function alphabetagrid(seqnames::Vector{String}, seqs, treestring::String;
+    verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
+    tree = FUBAR_init(treestring, verbosity=verbosity)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     return FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity)
 end
 
-export FUBAR_init2grid, FUBAR_tabulate_from_θ
+export alphabetagrid, FUBAR_tabulate_from_θ
 
-function FUBAR(seqnames, seqs, treestring, outpath;
+#Need to make this match the smoothFUBAR setup with the first argument controlling the method (EM, Gibbs, etc)
+function FUBAR(f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
     method = (sampler = :DirichletEM, concentration = 0.5, iterations = 2500))
-    fubar = FUBAR_init2grid(seqnames, seqs, treestring, outpath,
-    pos_thresh=pos_thresh, verbosity=verbosity, exports=exports, code=code, optimize_branch_lengths=optimize_branch_lengths)
-    
-    con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, LL_offset = fubar.cond_lik_matrix, fubar.alpha_vec, fubar.beta_vec, fubar.alpha_ind_vec, fubar.beta_ind_vec, fubar.cond_lik_matrix, fubar.LL_offset
-
-    #if method.sampler == :DirichletEM
-        θ = FUBAR_fitEM(con_lik_matrix, method.iterations, method.concentration)
-    #end
-    
-    df_results = FUBAR_tabulate_from_θ(θ, fubar, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
-    #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df_results, (θ, fubar)
+    exports && init_path(outpath)
+    θ = FUBAR_fitEM(f.cond_lik_matrix, method.iterations, method.concentration)
+    df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
+    return df_results, θ
 end
+
+function alternating_maximize(f, a_bounds, b_bounds; final_tol = 1e-20, max_iters = 50)
+    a = sum(a_bounds)/2
+    b = sum(b_bounds)/2
+    m = -f(a,b)
+    for i in 1:3
+        a = brents_method_minimize(x -> -f(x,b), a_bounds[1], a_bounds[2], identity, 1e-5)
+        b = brents_method_minimize(x -> -f(a,x), b_bounds[1], b_bounds[2], identity, 1e-5)
+    end
+    m = -f(a,b)
+    next_m = -Inf
+    for i in 1:max_iters
+        a = brents_method_minimize(x -> -f(x,b), a_bounds[1], a_bounds[2], identity, final_tol)
+        b = brents_method_minimize(x -> -f(a,x), b_bounds[1], b_bounds[2], identity, final_tol)
+        next_m = -f(a,b)
+        if abs(next_m - m) < final_tol
+            break;
+        end
+        m = next_m
+    end
+    return a,b,-m
+end
+
+function interpolating_LRS(grid)
+    itp = interpolate(grid, BSpline(Cubic(Line(OnGrid()))))
+    
+    #Null model:
+    ab = brents_method_minimize(x -> -itp(x,x), 1, 20, identity, 1e-20)
+    LL_null = itp(ab,ab)
+
+    #Alt model:
+    a,b,LL_alt = alternating_maximize(itp, (1.0,20.0), (1.0,20.0))
+    LRS = 2(LL_alt-LL_null)
+    p = 1-cdf(Chisq(1), LRS)
+    return p, (p_value = p, LRS = LRS, LL_alt = LL_alt, α_alt = a, β_alt = b, LL_null = LL_null, αβ_null = ab, sel = ifelse(p<0.05,ifelse(b>a, "Positive", "Purifying"), ""))
+end
+
+#Frequentist interpolating fixed-effects FUBAR
+#This needs to have exports like regular FUBAR - plots etc
+#We could plot LL surfaces for each site under selection, like this:
+#=
+    itp = interpolate((LLmatrix[:,:,190]'), BSpline(Cubic(Line(OnGrid()))));
+    x = range(1, 20, length=200)
+    y = range(1, 20, length=200)
+    z = @. itp(x', y)
+    contour(x, y, z, levels=30, color=:turbo, fill=true, linewidth = 0, colorbar = false, size = (400,400))
+=#
+function fifeFUBAR(f::FUBARgrid, outpath; verbosity=1, exports=true)
+    exports && init_path(outpath)
+    LLmatrix = reshape(f.LL_matrix, length(f.grid_values),length(f.grid_values),:) 
+    #Note: dim1 = beta, dim2 = alpha, so we transpose going in:
+    stats = [interpolating_LRS(LLmatrix[:,:,i]') for i in 1:size(LLmatrix, 3)]
+    df_results = DataFrame([s[2] for s in stats])
+    df_results.site = 1:size(LLmatrix, 3)
+    df_results.α_alt .= f.grid_function.(df_results.α_alt)
+    df_results.β_alt .= f.grid_function.(df_results.β_alt)
+    df_results.αβ_null .= f.grid_function.(df_results.αβ_null)
+    CSV.write(outpath * "_results.csv", df_results)
+    return df_results
+end
+
+export fifeFUBAR
