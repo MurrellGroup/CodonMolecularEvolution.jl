@@ -115,16 +115,16 @@ function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_sam
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in n_adapts+1:length(samples)])
     core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts)
     other_plots(ℓπ, samples, f, analysis_name, n_adapts)
-    return posterior_mean_θ
+    return posterior_mean_θ, samples
 end
 
 #Main FUBAR call:
 function smoothFUBAR(method::HMC_FUBAR, f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50, sigma = 0.03, HMC_samples = 500)
     exports && init_path(outpath)
-    θ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
+    θ, samples = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
-    return df_results, θ
+    return df_results, θ, samples
 end
 
 #Functions specialized for each method:
