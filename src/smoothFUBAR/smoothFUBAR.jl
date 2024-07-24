@@ -98,8 +98,12 @@ function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapt
     plot(f.LL_offset .+ [samples[i].stat.log_density for i in 1:length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
 
+    
+    all_theta_chains = stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])
+    essdf = DataFrame(ess(Chains(all_theta_chains', [Symbol("θ$(i)") for i in 1:size(all_theta_chains,1)])))[:,[:parameters,:ess]]
+    CSV.write(analysis_name * "_θ_ESS.csv", essdf)
     inds_to_plot = sortperm(posterior_mean_θ, rev = true)[(1:(Int(sqrt(length(f.alpha_ind_vec))))).^2]
-    plot(stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])[inds_to_plot,:]',
+    plot(all_theta_chains[inds_to_plot,:]',
         legend = :none, alpha = 0.5, size = (700,350), xlabel = "Iterations")
     savefig(analysis_name * "_posterior_θ_trace.pdf")
 end
@@ -150,6 +154,11 @@ function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name,
     ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4)). BF = $(round(bayesfactor,sigdigits=4))"
     plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr, ylabel = "φpre")
     plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr, ylabel = "φ")
+
+    essdf = DataFrame(ess(Chains([[LP.unflatten(s.z.θ).φpre for s in samples[n_adapts+1:end]] [transf(M())(LP.unflatten(s.z.θ).φpre) for s in samples[n_adapts+1:end]]],
+                                    [:φpre, :φ])))[:,[:parameters,:ess]]
+    CSV.write(analysis_name * "_φ_ESS.csv", essdf)
+
     println(ppstr)
 end
 model_init(m::WeightedHMC_FUBAR, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K), φpre = 0.5),(ω = Normal(0.0,1.0), φpre = Normal(0.5,0.5)))
