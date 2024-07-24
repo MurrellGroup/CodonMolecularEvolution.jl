@@ -109,7 +109,7 @@ function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapt
 end
 
 #Generic other_plots that does nothing - will be overridden when needed
-other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts) = nothing
+other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts, posterior_mean_θ) = (θ = posterior_mean_θ)
 
 #HMC sampling:
 function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_samples = 500, n_adapts = 200, K = 50, sigma = 0.03, verbosity=1)
@@ -118,17 +118,17 @@ function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_sam
     samples = HMCsample(ℓπ, HMC_samples, n_adapts = n_adapts)
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in n_adapts+1:length(samples)])
     core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts)
-    other_plots(ℓπ, samples, f, analysis_name, n_adapts)
-    return posterior_mean_θ
+    other_plot_tuple = other_plots(ℓπ, samples, f, analysis_name, n_adapts, K)
+    return posterior_mean_θ, other_plot_tuple
 end
 
 #Main FUBAR call:
 function smoothFUBAR(method::HMC_FUBAR, f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50, sigma = 0.03, HMC_samples = 500)
     exports && init_path(outpath)
-    θ = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
+    θ, other_plot_tuple = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
-    return df_results, θ
+    return df_results, θ, other_plot_tuple
 end
 
 #Functions specialized for each method:
@@ -141,7 +141,7 @@ export FUBARsmooth
 #Generics for methods that use a smooth interpolation T(φpre) to control positive selection, where φpre<=0 means no positive selection
 abstract type WeightedHMC_FUBAR <: HMC_FUBAR end
 
-function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name, n_adapts) where M<:WeightedHMC_FUBAR
+function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name, n_adapts, K) where M<:WeightedHMC_FUBAR
     prior_possel = 1 - cdf(LP.priors.φpre,0)
     poschain = [LP.unflatten(s.z.θ).φpre > 0 for s in samples[n_adapts+1:end]]
     if all(poschain)
@@ -159,8 +159,46 @@ function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name,
                                     [:φpre, :φ])))[:,[:parameters,:ess]]
     CSV.write(analysis_name * "_φ_ESS.csv", essdf)
 
+
+    smoothFUBAR_mixing = calculate_smoothFUBAR_mixing(samples, n_adapts, K)
+    smoothFUBAR_probability, bayes_factor = calculate_p(samples, K, prior_possel)
+
     println(ppstr)
+
+    return (mixing = smoothFUBAR_mixing, global_posterior_probability = smoothFUBAR_probability, 
+    global_bayes_factor = bayes_factor)
+
 end
+
+function calculate_p(samples, K, prior_possel)
+
+    ψ_samples = [samples[i].z.θ[K + 1] for i in 1:length(samples)]
+
+    ψ_positive_given_data = sum(ψ_samples .> 0) / length(ψ_samples)
+
+    bayes_factor = (ψ_positive_given_data / (1 - ψ_positive_given_data)) * (prior_possel) / (1 - prior_possel)
+
+    return ψ_positive_given_data, bayes_factor
+
+end
+
+function calculate_smoothFUBAR_mixing(samples,n_adapts, K)
+
+        ψ_samples = [samples[i].z.θ[K + 1] for i in n_adapts:length(samples)]
+    
+        switches = 0
+    
+        for i in 1:(length(ψ_samples)-1)
+    
+            if ψ_samples[i] * ψ_samples[i+1] < 0
+                switches = switches + 0.5
+            end
+    
+        end
+    
+        return switches / length(ψ_samples)
+end
+
 model_init(m::WeightedHMC_FUBAR, f::FUBARgrid{T}, K::Int, σ::T) where T = LogPosteriorRFF(m, f, K, σ, (ω = randn(K), φpre = 0.5),(ω = Normal(0.0,1.0), φpre = Normal(0.5,0.5)))
 
 #Where φ is the proportion of sites where beta>alpha
