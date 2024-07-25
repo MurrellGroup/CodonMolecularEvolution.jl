@@ -103,8 +103,8 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
 
     sites_to_plot = findall(positive_posteriors .> posterior_threshold)
     num_plot = length(sites_to_plot)
+    verbosity > 0 && println("$(num_plot) sites with positive selection above threshold.")
     if (num_plot > 0) && plots
-        verbosity > 0 && println("$num_plot sites with positive selection above threshold.")
         plot()
         s = 0.5/max(maximum(posterior_alpha[:,sites_to_plot]),maximum(posterior_beta[:,sites_to_plot]))
         FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:,[i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind = nothing)
@@ -113,13 +113,10 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
         savefig(analysis_name * "_violin_positive.pdf")
     end
     
-        verbosity > 0 && println("No sites with positive selection above threshold.")
-    
-
     sites_to_plot = findall(purifying_posteriors .> posterior_threshold)
     num_plot = length(sites_to_plot)
+    verbosity > 0 && println("$(num_plot) sites with purifying selection above threshold.")
     if (num_plot > 0) && plots
-        verbosity > 0 && println("$num_plot sites with purifying selection above threshold.")
         plot()
         s = 0.5/max(maximum(posterior_alpha[:,sites_to_plot]),maximum(posterior_beta[:,sites_to_plot]))
         FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:,[i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind = nothing)
@@ -127,13 +124,12 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
         plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
         savefig(analysis_name * "_violin_purifying.pdf")
     end
-        verbosity > 0 && println("No sites with purifying selection above threshold.")
     
     if plots
         gridplot(alpha_ind_vec,beta_ind_vec,grid_values,θ; title = "Posterior mean θ")
         savefig(analysis_name * "_θ.pdf")
     end
-
+    
     df_results = DataFrame(
         site = 1:size(con_lik_matrix,2),
         positive_posterior = positive_posteriors,
