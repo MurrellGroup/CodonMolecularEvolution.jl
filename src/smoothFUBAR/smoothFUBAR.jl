@@ -109,26 +109,31 @@ function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapt
 end
 
 #Generic other_plots that does nothing - will be overridden when needed
-other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts, posterior_mean_θ) = (θ = posterior_mean_θ)
+other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts, posterior_mean_θ; plots = false) = (θ = posterior_mean_θ)
 
 #HMC sampling:
-function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_samples = 500, n_adapts = 200, K = 50, sigma = 0.03, verbosity=1)
+function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_samples = 500, n_adapts = 200, K = 50, sigma = 0.03, verbosity=1, plots = false)
     verbosity > 0 && println("Step 4: Estimating posterior surface by HMC.")
     ℓπ = model_init(method, f, K, sigma)
+
     samples = HMCsample(ℓπ, HMC_samples, n_adapts = n_adapts)
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in n_adapts+1:length(samples)])
-    core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts)
-    other_plot_tuple = other_plots(ℓπ, samples, f, analysis_name, n_adapts, K)
-    return posterior_mean_θ, other_plot_tuple
+
+    if plots
+        core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts)
+    end
+
+    return_tuple = other_plots(ℓπ, samples, f, analysis_name, n_adapts, K, posterior_mean_θ, plots = plots)
+    return return_tuple
 end
 
 #Main FUBAR call:
 function smoothFUBAR(method::HMC_FUBAR, f::FUBARgrid, outpath;
-    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50, sigma = 0.03, HMC_samples = 500)
+    pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50, sigma = 0.03, HMC_samples = 500, plots = false)
     exports && init_path(outpath)
-    θ, other_plot_tuple = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity)
-    df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity)
-    return df_results, θ, other_plot_tuple
+    RFF_tuple = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, K = K, sigma = sigma, verbosity = verbosity, plots = plots)
+    df_results = FUBAR_tabulate_from_θ(RFF_tuple.θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity, plots = plots)
+    return df_results, RFF_tuple
 end
 
 #Functions specialized for each method:
@@ -141,7 +146,7 @@ export FUBARsmooth
 #Generics for methods that use a smooth interpolation T(φpre) to control positive selection, where φpre<=0 means no positive selection
 abstract type WeightedHMC_FUBAR <: HMC_FUBAR end
 
-function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name, n_adapts, K) where M<:WeightedHMC_FUBAR
+function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name, n_adapts, K, posterior_mean_θ; plots = false) where M<:WeightedHMC_FUBAR
     prior_possel = 1 - cdf(LP.priors.φpre,0)
     poschain = [LP.unflatten(s.z.θ).φpre > 0 for s in samples[n_adapts+1:end]]
     if all(poschain)
@@ -151,9 +156,11 @@ function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name,
         pospos = sum(poschain/length(poschain))
         bayesfactor = pospos/(1-pospos) * (1-prior_possel)/prior_possel
     end
-    ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4)). BF = $(round(bayesfactor,sigdigits=4))"
-    plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr, ylabel = "φpre")
-    plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr, ylabel = "φ")
+    if plots
+        ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4)). BF = $(round(bayesfactor,sigdigits=4))"
+        plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr, ylabel = "φpre")
+        plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr, ylabel = "φ")
+    end
 
     essdf = DataFrame(ess(Chains([[LP.unflatten(s.z.θ).φpre for s in samples[n_adapts+1:end]] [transf(M())(LP.unflatten(s.z.θ).φpre) for s in samples[n_adapts+1:end]]],
                                     [:φpre, :φ])))[:,[:parameters,:ess]]
@@ -163,9 +170,9 @@ function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name,
     smoothFUBAR_mixing = calculate_smoothFUBAR_mixing(samples, n_adapts, K)
     smoothFUBAR_probability, bayes_factor = calculate_p(samples, K, prior_possel)
 
-    println(ppstr)
+    
 
-    return (mixing = smoothFUBAR_mixing, global_posterior_probability = smoothFUBAR_probability, 
+    return (θ = posterior_mean_θ, mixing = smoothFUBAR_mixing, global_posterior_probability = smoothFUBAR_probability, 
     global_bayes_factor = bayes_factor)
 
 end
