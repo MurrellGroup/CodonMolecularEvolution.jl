@@ -45,9 +45,12 @@ function sim_alphabeta_seqs(alphavec::Vector{Float64}, betavec::Vector{Float64},
                             scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
     @assert length(alphavec) == length(betavec)
     eq_freqs = MolecularEvolution.F3x4_eq_freqs(f3x4)
-    template = [CodonPartition(1)]
-    internal_message_init!(singletree, template)
-    singletree.parent_message[1].state[:,1] .= eq_freqs
+    eq_partition = CodonPartition(1)
+    eq_partition.state .= eq_freqs
+    lazy_template = LazyPartition{CodonPartition}()
+    internal_message_init!(singletree, lazy_template)
+    direction = LazyDown(isleafnode)
+    lazyprep!(singletree, eq_partition, direction=direction)
 
     if scale_total_tree_neutral_expected_subs > 0.0
         total_bl = sum([n.branchlength for n in getnodelist(singletree)])
@@ -64,8 +67,9 @@ function sim_alphabeta_seqs(alphavec::Vector{Float64}, betavec::Vector{Float64},
         alpha,beta = alphavec[i], betavec[i]
         m = DiagonalizedCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, nucmat, f3x4))
         sample_down!(singletree, m)
-        nucs_at_leaves = [partition2obs(n.message[1]) for n in getleaflist(singletree)]
+        nucs_at_leaves = [n.message[1].obs for n in getleaflist(singletree)]
         push!(nucseq_collection, nucs_at_leaves)
+        lazyprep!(singletree, direction) #This is needed for successive sample_down! calls
     end
     nucseqs = prod(stack(nucseq_collection), dims = 2)[:]
     if outpath != ""
