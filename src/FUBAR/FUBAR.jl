@@ -156,9 +156,9 @@ function FUBAR(f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
     method = (sampler = :DirichletEM, concentration = 0.5, iterations = 2500), plots = true)
     exports && init_path(outpath)
-    θ = FUBAR_fitEM(f.cond_lik_matrix, method.iterations, method.concentration)
+    θ = FUBAR_fitEM(f.cond_lik_matrix, method.iterations, method.concentration, verbosity=verbosity)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity, plots = plots)
-    return df_results, θ
+    return df_results, (θ = θ, )
 end
 
 function alternating_maximize(f, a_bounds, b_bounds; final_tol = 1e-20, max_iters = 50)
