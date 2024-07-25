@@ -81,7 +81,7 @@ function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     return LDAθ
 end
 
-function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, plots = false)
+function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, plots = true)
     verbosity > 0 && println("Step 5: Tabulating results and saving plots.")
     con_lik_matrix, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec = f.cond_lik_matrix, f.alpha_vec, f.beta_vec, f.alpha_ind_vec, f.beta_ind_vec
     pos_filt = beta_ind_vec .> alpha_ind_vec
@@ -111,9 +111,10 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
         FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:,[i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind = nothing)
         plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
         savefig(analysis_name * "_violin_positive.pdf")
-    elseif plots
-        verbosity > 0 && println("No sites with positive selection above threshold.")
     end
+    
+        verbosity > 0 && println("No sites with positive selection above threshold.")
+    
 
     sites_to_plot = findall(purifying_posteriors .> posterior_threshold)
     num_plot = length(sites_to_plot)
@@ -125,9 +126,9 @@ function FUBAR_tabulate_from_θ(θ, f::FUBARgrid, analysis_name; posterior_thres
         FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:,[i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind = nothing)        
         plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
         savefig(analysis_name * "_violin_purifying.pdf")
-    elseif plots
-        verbosity > 0 && println("No sites with purifying selection above threshold.")
     end
+        verbosity > 0 && println("No sites with purifying selection above threshold.")
+    
     if plots
         gridplot(alpha_ind_vec,beta_ind_vec,grid_values,θ; title = "Posterior mean θ")
         savefig(analysis_name * "_θ.pdf")
@@ -157,7 +158,7 @@ export alphabetagrid, FUBAR_tabulate_from_θ
 #Need to make this match the smoothFUBAR setup with the first argument controlling the method (EM, Gibbs, etc)
 function FUBAR(f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false,
-    method = (sampler = :DirichletEM, concentration = 0.5, iterations = 2500), plots = false)
+    method = (sampler = :DirichletEM, concentration = 0.5, iterations = 2500), plots = true)
     exports && init_path(outpath)
     θ = FUBAR_fitEM(f.cond_lik_matrix, method.iterations, method.concentration)
     df_results = FUBAR_tabulate_from_θ(θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity, plots = plots)
