@@ -12,6 +12,7 @@ include("../test/benchmark_difFUBAR.jl")
 
 include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
+include("FLAVOR/FLAVOR.jl")
 
 include("simulations/alphabeta/alphabeta.jl")
 
