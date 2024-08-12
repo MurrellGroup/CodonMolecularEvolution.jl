@@ -1,10 +1,6 @@
 function MEME_global_fit(seqnames::Vector{String}, seqs, treestring::String;
     verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
     tree = FUBAR_init(treestring, verbosity=verbosity)
-    @show [node.branchlength for node in getnodelist(tree)]
-    for node in getnodelist(tree)
-        node.branchlength = 1
-    end
     difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
 end
 
