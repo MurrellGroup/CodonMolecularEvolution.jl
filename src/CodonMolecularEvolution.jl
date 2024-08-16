@@ -16,6 +16,8 @@ include("FLAVOR/FLAVOR.jl")
 
 include("MEME/MEME.jl")
 
+include("FAME/FAME.jl")
+
 include("simulations/alphabeta/alphabeta.jl")
 
 export 
