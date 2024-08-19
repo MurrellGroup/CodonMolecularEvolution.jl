@@ -19,6 +19,7 @@ include("MEME/MEME.jl")
 include("FAME/FAME.jl")
 
 include("simulations/alphabeta/alphabeta.jl")
+include("simulations/omegamixture/omegamixture.jl")
 
 export 
     difFUBARBaseline,
