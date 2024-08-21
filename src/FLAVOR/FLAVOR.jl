@@ -175,6 +175,67 @@ function prop_pos(gp, capped)
     return mean(s .> 1.0)
 end
 
+#Should only do this for detecs, because it's expensive
+#DRY, see FUBAR_violin_plot
+function gamma_violin_plot(sites, posterior_weights, gamma_grid;
+    color="black", tag="", alpha=0.6,
+    x_label="Parameter", y_label="Codon Sites",
+    sitespace=5.0, legend_ncol=3,
+    plot_legend=true)
+
+    ypos = [-i * sitespace for i in 1:length(sites)]
+    plot!([0, 0], [minimum(ypos) - 1, 2 + maximum(ypos) - minimum(ypos)], color="grey", alpha=0.1, label=:none)
+
+    xlog = -5:0.5:5  # Define the x-axis range for the gamma plots (log-domain)
+    x = exp.(xlog)
+
+    for i in 1:length(sites)
+        posterior_weights_at_site = posterior_weights[i]
+        center_line = ypos[i]
+        
+        # Plot the gamma distributions for the current site
+        for j in eachindex(gamma_grid)
+            mu, shape = gamma_grid[j]
+            weight = posterior_weights_at_site[j]
+            y = pdf(Gamma(mu, shape), x)
+            #xaxis=log
+            #Need to transform y
+            plot!(xlog, y .+ center_line, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
+            plot!(xlog, center_line .- y, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
+        end
+    end
+
+    bar!([-10], [1], bottom=[1000], color=color, alpha=alpha, label=tag, linewidth=0, bar_edges=false, linealpha=0.0)
+    bar!(yticks=(ypos, ["       " for _ in sites]))
+    annotate!(length(gamma_grid)/2, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
+    annotate!(-4.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
+
+    bar!(ylim=(minimum(ypos) - sitespace, maximum(ypos) + sitespace), xlim = (minimum(xlog), maximum(xlog)))
+    if plot_legend
+        plot!(
+            legend=(0.5, 1+1.5/(50+length(sites))),
+            legendcolumns=legend_ncol,
+            shadow=true, fancybox=true,
+        )
+    end
+    for i in 1:length(sites)
+        annotate!(-0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
+    end
+end
+
+#DRY, see collapse_counts
+function collapse_weights(param_vec, weight_vec; cases=nothing)
+    if isnothing(cases)
+        cases = sort(union(param_vec))
+    end
+    d = Dict(zip(cases, 1:length(cases)))
+    storage = zeros(Float64, length(cases))
+    for i in 1:length(weight_vec)
+        storage[d[param_vec[i]]] += weight_vec[i]
+    end
+    return storage ./ sum(storage)
+end
+
 #Need to make this match the smoothFUBAR setup with the first argument controlling the method (EM, Gibbs, etc)
 function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (sampler = :DirichletEM, concentration = 0.1, iterations = 2500), plots = true)
     l = size(f.prob_matrix,1)
@@ -186,15 +247,38 @@ function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (s
     pos_prior = sum(pos_sel_mask.*θ)
     posterior_pos = [sum(MolecularEvolution.sum2one(θ .* f.prob_matrix[:,i]).*pos_sel_mask) for i in 1:num_sites];
     bfs = bayes_factor.(posterior_pos,pos_prior)
+    detecs_filter = posterior_pos .> pos_thresh
 
     df = DataFrame()
     df."site" = 1:length(posterior_pos)
     df."P(β>α)" = posterior_pos
     df."BayesFactor" = bfs
-    df[!,"P(β>α)>$(pos_thresh)"]= posterior_pos .> pos_thresh
+    df[!,"P(β>α)>$(pos_thresh)"]= detecs_filter
     df."BayesFactor>10" = bfs .> 10.0
     df."BayesFactor>100" = bfs .> 100.0
     CSV.write(outpath*"_SelectionOutput.csv",df)
+
+    #GammaViolin
+    mubyshape = [(g[1], g[2]) for g in f.gridpoints]
+    cases = [(mu,shape) for mu in f.mugrid for shape in f.shapegrid]
+    alloc_grid = θ .* f.prob_matrix
+    mushape_volumes = Vector{Float64}[]
+    sites_to_plot = collect(1:num_sites)[detecs_filter]
+    for site = sites_to_plot
+        #Right now, I only look at uncapped...
+        mubyshape_weights = collapse_weights(mubyshape, alloc_grid[1:div(l, 2), site], cases=cases)
+        push!(mushape_volumes, mubyshape_weights)
+    end
+
+    if plots
+        ysize = 300 + 70 * num_sites
+        lmargin = 7 + num_sites / 2
+        #... because how would you viz a capped gamma in violin plot?
+        #Could put in an approx. point mass at 1.0, with some interval: [1.0 - delta, 1.0 + delta]
+        gamma_violin_plot(sites_to_plot, mushape_volumes, cases, plot_legend=false)
+        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+        savefig(outpath * "_gamma_violin.pdf")
+    end
 
     if plots
         #Posteriors:
