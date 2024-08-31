@@ -2,6 +2,7 @@
 #f = FLAVORgrid(seqnames, seqs, treestring)
 #FLAVOR(f, outdir)
 
+const FLAVOR_CAP = 1.0
 
 struct FLAVORgrid{T}
     tr::Function
@@ -175,19 +176,54 @@ function prop_pos(gp, capped)
     return mean(s .> 1.0)
 end
 
+#Get pdf of a Distribution that's been right-capped-off at cap
+function cappedpdf(G::Distribution, x::AbstractVector{Float64}, cap::Float64, width::Float64; capped = true, trinv = identity)
+    if !capped
+        return pdf(G, x)
+    end
+    cap_ind = searchsortedlast(x, cap)
+
+    y = zeros(length(x))
+    @views y[1:cap_ind] .+= pdf(G, x[1:cap_ind])
+    distribute_point_mass!(y, G, x, true, cap, width, trinv=trinv)
+    return y
+end
+
+function distribute_point_mass!(y::AbstractVector{Float64}, G::Distribution, x::AbstractVector{Float64}, to_right::Bool, loc::Float64, width::Float64; trinv = identity)
+    L = length(x)
+    @assert L == length(y)
+    indfind = to_right ? max(1, searchsortedlast(x, loc)) : min(L, searchsortedfirst(x, loc))
+    left_mass = cdf(G, x[indfind])
+    mass = to_right ? 1 - left_mass : left_mass
+
+    indstop = indfind
+    trinv_xfind = trinv(x[indfind])
+    while  abs(trinv(x[indstop]) - trinv_xfind) < width
+        indstop = to_right ? max(1, indstop - 1) : min(L, indstop + 1)
+        (indstop == 1 || indstop == L) && break
+    end
+    step = to_right ? -1 : 1
+    @views y[indfind:step:indstop] .+= mass / abs(x[indstop] - x[indfind])
+end
+
 #Should only do this for detecs, because it's expensive
 #DRY, see FUBAR_violin_plot
 function gamma_violin_plot(sites, posterior_weights, gamma_grid;
     color="black", tag="", alpha=0.6,
     x_label="Parameter", y_label="Codon Sites",
-    sitespace=5.0, legend_ncol=3,
+    sitespace=7.5, legend_ncol=3,
     plot_legend=true)
 
     ypos = [-i * sitespace for i in 1:length(sites)]
-    plot!([0, 0], [minimum(ypos) - 1, 2 + maximum(ypos) - minimum(ypos)], color="grey", alpha=0.1, label=:none)
 
-    xlog = -5:0.5:5  # Define the x-axis range for the gamma plots (log-domain)
-    x = exp.(xlog)
+    tr(x) = exp(x) - exp(-7) #For consistency, would preferably denote this as trinv
+    trinv(x) = log(x + exp(-7))
+    tr_prim(x) = exp(x)
+    xgrid = gridsetup(exp(-30), exp(7), 343, trinv, tr)
+    xinvgrid = trinv.(xgrid)
+    point_mass_width = 0.2 #xinvgrid scope
+
+    plot([trinv(1.0), trinv(1.0)], [minimum(ypos) - 2 * sitespace, 2 + maximum(ypos) + 2 * sitespace], color="grey", alpha=0.1, label=:none)
 
     for i in 1:length(sites)
         posterior_weights_at_site = posterior_weights[i]
@@ -195,22 +231,22 @@ function gamma_violin_plot(sites, posterior_weights, gamma_grid;
         
         # Plot the gamma distributions for the current site
         for j in eachindex(gamma_grid)
-            mu, shape = gamma_grid[j]
+            mu, shape, capped = gamma_grid[j]
             weight = posterior_weights_at_site[j]
-            y = pdf(Gamma(mu, shape), x)
-            #xaxis=log
-            #Need to transform y
-            plot!(xlog, y .+ center_line, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
-            plot!(xlog, center_line .- y, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
+            G = Gamma(mu, shape)
+            y = cappedpdf(G, xgrid, FLAVOR_CAP, point_mass_width, capped=capped, trinv=trinv) .* tr_prim.(xinvgrid) #Account for the change of variables with tr_prim
+            #I think we should combine the log+offset transform with a left cap at xgrid[1]
+            #This doesn't look quite right: distribute_point_mass!(y, G, xgrid, false, 0.0, point_mass_width, trinv=trinv)
+            plot!(xinvgrid, y .+ center_line, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
+            plot!(xinvgrid, center_line .- y, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
         end
     end
 
-    bar!([-10], [1], bottom=[1000], color=color, alpha=alpha, label=tag, linewidth=0, bar_edges=false, linealpha=0.0)
-    bar!(yticks=(ypos, ["       " for _ in sites]))
-    annotate!(length(gamma_grid)/2, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
-    annotate!(-4.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
+    plot!(yticks=(ypos, ["       " for _ in sites]))
+    #annotate!(0, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
+    annotate!(minimum(xinvgrid) - 1.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
 
-    bar!(ylim=(minimum(ypos) - sitespace, maximum(ypos) + sitespace), xlim = (minimum(xlog), maximum(xlog)))
+    plot!(ylim=(minimum(ypos) - sitespace, maximum(ypos) + sitespace), xlim = (minimum(xinvgrid), maximum(xinvgrid)))
     if plot_legend
         plot!(
             legend=(0.5, 1+1.5/(50+length(sites))),
@@ -219,7 +255,7 @@ function gamma_violin_plot(sites, posterior_weights, gamma_grid;
         )
     end
     for i in 1:length(sites)
-        annotate!(-0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
+        annotate!(minimum(xinvgrid) - 0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
     end
 end
 
@@ -248,6 +284,7 @@ function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (s
     posterior_pos = [sum(MolecularEvolution.sum2one(θ .* f.prob_matrix[:,i]).*pos_sel_mask) for i in 1:num_sites];
     bfs = bayes_factor.(posterior_pos,pos_prior)
     detecs_filter = posterior_pos .> pos_thresh
+    inv_detecs_filter = posterior_pos .< 1 - pos_thresh
 
     df = DataFrame()
     df."site" = 1:length(posterior_pos)
@@ -259,25 +296,25 @@ function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (s
     CSV.write(outpath*"_SelectionOutput.csv",df)
 
     #GammaViolin
-    mubyshape = [(g[1], g[2]) for g in f.gridpoints]
-    cases = [(mu,shape) for mu in f.mugrid for shape in f.shapegrid]
+    mubyshape = [(g[1], g[2], capped) for capped in [false, true] for g in f.gridpoints]
+    cases = [(mu,shape, capped) for capped in [false, true] for mu in f.mugrid for shape in f.shapegrid]
     alloc_grid = θ .* f.prob_matrix
-    mushape_volumes = Vector{Float64}[]
-    sites_to_plot = collect(1:num_sites)[detecs_filter]
-    for site = sites_to_plot
-        #Right now, I only look at uncapped...
-        mubyshape_weights = collapse_weights(mubyshape, alloc_grid[1:div(l, 2), site], cases=cases)
-        push!(mushape_volumes, mubyshape_weights)
-    end
 
-    if plots
-        ysize = 300 + 70 * num_sites
-        lmargin = 7 + num_sites / 2
-        #... because how would you viz a capped gamma in violin plot?
-        #Could put in an approx. point mass at 1.0, with some interval: [1.0 - delta, 1.0 + delta]
-        gamma_violin_plot(sites_to_plot, mushape_volumes, cases, plot_legend=false)
-        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
-        savefig(outpath * "_gamma_violin.pdf")
+    for (filter, tag) in zip([detecs_filter, inv_detecs_filter], ["pos", "neg"])
+        mushape_volumes = Vector{Float64}[]
+        sites_to_plot = collect(1:num_sites)[filter]
+        for site = sites_to_plot
+            mubyshape_weights = collapse_weights(mubyshape, alloc_grid[:, site], cases=cases)
+            push!(mushape_volumes, mubyshape_weights)
+        end
+
+        if plots
+            ysize = 400 + 200 * length(sites_to_plot)
+            lmargin = 15 + length(sites_to_plot) / 2
+            gamma_violin_plot(sites_to_plot, mushape_volumes, cases, plot_legend=false, x_label="log(ω)")
+            plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+            savefig(outpath * "_$(tag)_gamma_violin.pdf")
+        end
     end
 
     if plots
