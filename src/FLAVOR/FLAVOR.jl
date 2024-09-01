@@ -209,21 +209,19 @@ end
 #Should only do this for detecs, because it's expensive
 #DRY, see FUBAR_violin_plot
 function gamma_violin_plot(sites, posterior_weights, gamma_grid;
-    color="black", tag="", alpha=0.6,
-    x_label="Parameter", y_label="Codon Sites",
-    sitespace=7.5, legend_ncol=3,
-    plot_legend=true)
+    x_label="log(ω + exp(-7))", y_label="Codon Sites",
+    sitespace=7.5)
 
     ypos = [-i * sitespace for i in 1:length(sites)]
 
     tr(x) = exp(x) - exp(-7) #For consistency, would preferably denote this as trinv
     trinv(x) = log(x + exp(-7))
     tr_prim(x) = exp(x)
-    xgrid = gridsetup(exp(-30), exp(7), 343, trinv, tr)
+    xgrid = gridsetup(exp(-30), exp(7), 100, trinv, tr)
     xinvgrid = trinv.(xgrid)
     point_mass_width = 0.2 #xinvgrid scope
 
-    plot([trinv(1.0), trinv(1.0)], [minimum(ypos) - 2 * sitespace, 2 + maximum(ypos) + 2 * sitespace], color="grey", alpha=0.1, label=:none)
+    plot([trinv(1.0), trinv(1.0)], [minimum(ypos) - sitespace, maximum(ypos) + sitespace], color="grey", alpha=0.1, label=:none)
 
     for i in 1:length(sites)
         posterior_weights_at_site = posterior_weights[i]
@@ -243,17 +241,11 @@ function gamma_violin_plot(sites, posterior_weights, gamma_grid;
     end
 
     plot!(yticks=(ypos, ["       " for _ in sites]))
-    #annotate!(0, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
-    annotate!(minimum(xinvgrid) - 1.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
+    annotate!(0, minimum(ypos) - (sitespace + 2.5), Plots.text(x_label, "black", :center, 10))
+    annotate!(minimum(xinvgrid) - 2.5, minimum(ypos) / 2, Plots.text(y_label, "black", :center, 10, rotation=90))
 
     plot!(ylim=(minimum(ypos) - sitespace, maximum(ypos) + sitespace), xlim = (minimum(xinvgrid), maximum(xinvgrid)))
-    if plot_legend
-        plot!(
-            legend=(0.5, 1+1.5/(50+length(sites))),
-            legendcolumns=legend_ncol,
-            shadow=true, fancybox=true,
-        )
-    end
+    
     for i in 1:length(sites)
         annotate!(minimum(xinvgrid) - 0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
     end
@@ -310,8 +302,8 @@ function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (s
 
         if plots
             ysize = 400 + 200 * length(sites_to_plot)
-            lmargin = 15 + length(sites_to_plot) / 2
-            gamma_violin_plot(sites_to_plot, mushape_volumes, cases, plot_legend=false, x_label="log(ω)")
+            lmargin = 15 + length(sites_to_plot) / 10
+            gamma_violin_plot(sites_to_plot, mushape_volumes, cases)
             plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
             savefig(outpath * "_$(tag)_gamma_violin.pdf")
         end
