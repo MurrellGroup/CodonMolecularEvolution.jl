@@ -231,12 +231,11 @@ function gamma_violin_plot(sites, posterior_weights, gamma_grid;
         for j in eachindex(gamma_grid)
             mu, shape, capped = gamma_grid[j]
             weight = posterior_weights_at_site[j]
-            G = Gamma(mu, shape)
+            G = Gamma(shape, mu / shape)
             y = cappedpdf(G, xgrid, FLAVOR_CAP, point_mass_width, capped=capped, trinv=trinv) .* tr_prim.(xinvgrid) #Account for the change of variables with tr_prim
             #I think we should combine the log+offset transform with a left cap at xgrid[1]
             #This doesn't look quite right: distribute_point_mass!(y, G, xgrid, false, 0.0, point_mass_width, trinv=trinv)
-            plot!(xinvgrid, y .+ center_line, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
-            plot!(xinvgrid, center_line .- y, fillrange=center_line, alpha=weight, color=:green, linealpha=0, legend=false)
+            plot!(xinvgrid, y .+ center_line, fillrange=center_line .- y, alpha=weight, color=:green, linealpha=0, legend=false)
         end
     end
 
