@@ -16,9 +16,7 @@ function sim_init!(singletree, nucmat::Array{Float64}, f3x4::Array{Float64}; sca
         testmat = MolecularEvolution.MG94_F3x4(1.0, 1.0, nucmat, f3x4)
         current_expected_neutral_subs = (-sum(eq_freqs .* diag(testmat)))*total_bl
         scale = scale_total_tree_neutral_expected_subs/current_expected_neutral_subs
-        for n in getnodelist(singletree)
-            n.branchlength *= scale
-        end
+        rescale_branchlengths!(singletree, scale)
     end
     return direction
 end
