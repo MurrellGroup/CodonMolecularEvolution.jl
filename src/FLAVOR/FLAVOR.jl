@@ -3,7 +3,7 @@
 #FLAVOR(f, outdir)
 
 
-struct FLAVORgrid{T}
+struct FLAVORgrid{T} <: BAMEgrid
     tr::Function
     trinv::Function
     mugrid::Vector{T}
@@ -15,7 +15,7 @@ struct FLAVORgrid{T}
     site_scalers::Vector{T}
 end
 
-
+#We could perhaps generalize here with a BAMEgrid as well
 function FLAVORgrid(seqnames::Vector{String}, seqs, treestring::String;
     verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
     tree = FUBAR_init(treestring, verbosity=verbosity)
@@ -175,14 +175,17 @@ function prop_pos(gp, capped)
     return mean(s .> 1.0)
 end
 
+#Note: we exclude the sites where there were no categories with omega > 1, even if they are uncapped.
+get_pos_sel_mask(f::FLAVORgrid) = vcat(prop_pos.(f.gridpoints,false),prop_pos.(f.gridpoints,true)) .> 0.0 #[i <= l/2 for i in 1:l]
+
+#BAME shouldn't live in FLAVOR.jl
 #Need to make this match the smoothFUBAR setup with the first argument controlling the method (EM, Gibbs, etc)
-function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (sampler = :DirichletEM, concentration = 0.1, iterations = 2500), plots = true)
+function BAME(f::BAMEgrid, outpath; pos_thresh=0.9, verbosity=1, method = (sampler = :DirichletEM, concentration = 0.1, iterations = 2500), plots = true)
     l = size(f.prob_matrix,1)
     num_sites = size(f.prob_matrix,2)
     θ = weightEM(f.prob_matrix, ones(l)./l, conc = method.concentration, iters = method.iterations)
 
-    #Note: we exclude the sites where there were no categories with omega > 1, even if they are uncapped.
-    pos_sel_mask = vcat(prop_pos.(f.gridpoints,false),prop_pos.(f.gridpoints,true)) .> 0.0 #[i <= l/2 for i in 1:l]
+    pos_sel_mask = get_pos_sel_mask(f)
     pos_prior = sum(pos_sel_mask.*θ)
     posterior_pos = [sum(MolecularEvolution.sum2one(θ .* f.prob_matrix[:,i]).*pos_sel_mask) for i in 1:num_sites];
     bfs = bayes_factor.(posterior_pos,pos_prior)
@@ -226,6 +229,10 @@ function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (s
         end
     end
     return df
+end
+
+function FLAVOR(f::FLAVORgrid, outpath; pos_thresh=0.9, verbosity=1, method = (sampler = :DirichletEM, concentration = 0.1, iterations = 2500), plots = true)
+    return BAME(f, outpath, pos_thresh=pos_thresh, verbosity=verbosity, method=method, plots=plots)
 end
 
 export FLAVOR

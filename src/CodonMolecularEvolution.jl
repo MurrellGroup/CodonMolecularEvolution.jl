@@ -4,6 +4,7 @@ using FASTX, MolecularEvolution, Measures, Compose, Plots, StatsBase, Distributi
 using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, Interpolations, MCMCChains
 
 abstract type difFUBARGrid end
+abstract type BAMEgrid end #Bayesian Approaches to Mixed Effects
 
 include("shared/shared.jl")
 include("difFUBAR/difFUBAR.jl")

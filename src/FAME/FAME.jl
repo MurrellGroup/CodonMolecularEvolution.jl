@@ -3,7 +3,7 @@
 #FAME(f, outdir)
 
 
-struct FAMEgrid{T}
+struct FAMEgrid{T} <: BAMEgrid
     tr::Function
     trinv::Function
     alphagrid::Vector{T}
@@ -93,61 +93,10 @@ function marginalized_BWMM_grid(gridpoints,grid_dims, GTRmat, F3x4_freqs, tree::
     return log_con_lik_matrix
 end
 
-function bayes_factor(posterior,prior) #Gonna merge this with FLAVOR regarding DRY
-    return (posterior/(1-posterior))*((1-prior)/prior)
-end
+get_pos_sel_mask(f::FAMEgrid) = [gridpoint[3] for gridpoint in f.gridpoints] .> 1.0 #Consider letting gridpoints be a matrix (list compr could then be avoided)
 
-#Need to make this match the smoothFUBAR setup with the first argument controlling the method (EM, Gibbs, etc)
 function FAME(f::FAMEgrid, outpath; pos_thresh=0.9, verbosity=1, method = (sampler = :DirichletEM, concentration = 0.1, iterations = 2500), plots = true)
-    l = size(f.prob_matrix,1)
-    num_sites = size(f.prob_matrix,2)
-    θ = weightEM(f.prob_matrix, ones(l)./l, conc = method.concentration, iters = method.iterations)
-
-    pos_sel_mask = [gridpoint[3] for gridpoint in f.gridpoints] .> 1.0 #Consider letting gridpoints be a matrix (list compr could then be avoided)
-    #Downstream is exactly the same as FLAVOR... DRY
-    pos_prior = sum(pos_sel_mask.*θ)
-    posterior_pos = [sum(MolecularEvolution.sum2one(θ .* f.prob_matrix[:,i]).*pos_sel_mask) for i in 1:num_sites];
-    bfs = bayes_factor.(posterior_pos,pos_prior)
-
-    df = DataFrame()
-    df."site" = 1:length(posterior_pos)
-    df."P(β>α)" = posterior_pos
-    df."BayesFactor" = bfs
-    df[!,"P(β>α)>$(pos_thresh)"]= posterior_pos .> pos_thresh
-    df."BayesFactor>10" = bfs .> 10.0
-    df."BayesFactor>100" = bfs .> 100.0
-    CSV.write(outpath*"_SelectionOutput.csv",df)
-
-    if plots
-        #Posteriors:
-        scatter(posterior_pos, label = :none, xlabel = "Codon sites", ylim = (0,1), color=:rainbow_bgyr_35_85_c72_n256, colorbar = :none,
-                ylabel = "P(β>α) for some branches", zcolor = posterior_pos .> pos_thresh, markerstrokewidth = 0, size = (800,300), margins = 10Plots.mm)
-        for i in 1:length(posterior_pos)
-            if posterior_pos[i] > pos_thresh
-                annotate!([(i,posterior_pos[i],Plots.text(" $(i)",8,:black,:left))])
-            end
-        end
-        savefig(outpath*"_SitePosteriors.pdf")
-
-        #Bayes factors:
-        scatter(bfs, label = :none, xlabel = "Codon sites", color=:rainbow_bgyr_35_85_c72_n256, colorbar = :none,
-                ylabel = "Bayes Factor", zcolor = bfs .> 10.0, markerstrokewidth = 0, size = (800,300), margins = 10Plots.mm, yscale = :log10)
-        for i in 1:length(bfs)
-            if bfs[i] > 10.0
-                annotate!([(i,bfs[i],Plots.text(" $(i)",8,:black,:left))])
-            end
-        end
-        savefig(outpath*"_SiteBayesFactors.pdf")
-    end
-
-    if verbosity > 0
-        for i in 1:length(posterior_pos)
-            if posterior_pos[i] > pos_thresh
-                println("Site $(i): P(β>α) on some branches = $(round(posterior_pos[i],digits=4))");
-            end
-        end
-    end
-    return df
+    return BAME(f, outpath, pos_thresh=pos_thresh, verbosity=verbosity, method=method, plots=plots)
 end
 
 export FAME
