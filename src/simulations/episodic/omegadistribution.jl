@@ -24,7 +24,7 @@ function sim_episodic_div_seqs(alphaD::Distribution, muD::Distribution, shapeD::
     if outpath != ""
         write_fasta(outpath*".fasta", nucseqs, seq_names = [n.name for n in getleaflist(singletree)])
         open(outpath*".tre", "a") do io write(io, newick(singletree)) end
-        write_simparams(outpath, sparams_collection, [:α, :mu, :shape, :positive])
+        write_simparams(outpath, sparams_collection, [:α, :μ, :shape, :positive])
     end
     return nucseqs, [n.name for n in getleaflist(singletree)], singletree, sparams_collection
 end
