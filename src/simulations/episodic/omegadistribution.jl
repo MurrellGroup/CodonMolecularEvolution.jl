@@ -1,11 +1,11 @@
 @doc ("""
-    sim_episodic_div_seqs(alphavec::Vector{Float64}, omegaDs::Vector{<:UnivariateDistribution}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
+    sim_episodic_seqs(alphavec::Vector{Float64}, omegaDs::Vector{<:UnivariateDistribution}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
                             scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
 
 Simulate a set of sequences under a given tree, with a set of alpha values from `alphavec` and omega distributions from `omegaDs`.
 For each site `i` and for each branch `b` in the tree, omega is drawn from the distribution `omegaDs[i]`.
 """ * SHARED_SIMDOC)
-function sim_episodic_div_seqs(alphavec::Vector{Float64}, omegaDs::Vector{<:UnivariateDistribution}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
+function sim_episodic_seqs(alphavec::Vector{Float64}, omegaDs::Vector{<:UnivariateDistribution}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
     scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
     @assert length(alphavec) == length(omegaDs)
     direction = sim_init!(singletree, nucmat, f3x4, scale_total_tree_neutral_expected_subs=scale_total_tree_neutral_expected_subs)
@@ -37,4 +37,4 @@ function sim_episodic_div_seqs(alphavec::Vector{Float64}, omegaDs::Vector{<:Univ
     return nucseqs, [n.name for n in getleaflist(singletree)], singletree, sparams_collection
 end
 
-export sim_episodic_div_seqs
+export sim_episodic_seqs

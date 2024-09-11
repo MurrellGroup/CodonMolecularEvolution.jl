@@ -1,11 +1,11 @@
 @doc ("""
-    sim_episodic_div_seqs(alphavec::Vector{Float64}, omegamat::Matrix{Float64}, weightmat::Matrix{Float64}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
+    sim_episodic_seqs(alphavec::Vector{Float64}, omegamat::Matrix{Float64}, weightmat::Matrix{Float64}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
                             scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
 
 Simulate a set of sequences under a given tree, with a set of alpha values from `alphavec`, omega values from `omegamat`, and probability weights specified in `weightmat`.
 For each site `i` and for each branch `b` in the tree, ``P(omega = omegamat[i, j]) = weightmat[i, j]``.
 """ * SHARED_SIMDOC)
-function sim_episodic_div_seqs(alphavec::Vector{Float64}, omegamat::Matrix{Float64}, weightmat::Matrix{Float64}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
+function sim_episodic_seqs(alphavec::Vector{Float64}, omegamat::Matrix{Float64}, weightmat::Matrix{Float64}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
     scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
     @assert size(alphavec, 1) == size(omegamat, 1) == size(weightmat, 1)
     @assert size(omegamat, 2) == size(weightmat, 2)
@@ -35,4 +35,4 @@ function sim_episodic_div_seqs(alphavec::Vector{Float64}, omegamat::Matrix{Float
     return nucseqs, [n.name for n in getleaflist(singletree)], singletree, sparams_collection
 end
 
-export sim_episodic_div_seqs
+export sim_episodic_seqs
