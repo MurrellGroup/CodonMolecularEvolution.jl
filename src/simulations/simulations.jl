@@ -1,3 +1,10 @@
+const SHARED_SIMDOC = """
+`f3x4` is a 3-by-4 matrix of position-specific nucleotide frequencies.
+`nucmat` is a 4-by-4 matrix of nucleotide substitution rates.
+If `scale_total_tree_neutral_expected_subs > 0`, then the tree is scaled so that if alpha=1 and omega=1 for all sites, the expected number of neutral substitutions is equal to `scale_total_tree_neutral_expected_subs`.
+The sequences are written to a fasta file, and the tree is written to a newick file.
+"""
+
 include("alphabeta/alphabeta.jl")
 include("episodic/omegamixture.jl")
 include("episodic/omegadistribution.jl")

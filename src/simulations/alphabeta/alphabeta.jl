@@ -8,16 +8,12 @@ end
 
 export alphabeta_setup
 
-"""
+@doc ("""
     sim_alphabeta_seqs(alphavec::Vector{Float64}, betavec::Vector{Float64}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
                             scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
 
 Simulate a set of sequences under a given tree, with a set of alpha and beta values.
-f3x4 is a 3-by-4 matrix of position-specific nucleotide frequencies.
-nucmat is a 4-by-4 matrix of nucleotide substitution rates.
-If scale_total_tree_neutral_expected_subs > 0, then the tree is scaled so that if alpha=beta=1 for all sites, the expected number of neutral substitutions is equal to scale_total_tree_neutral_expected_subs.
-The sequences are written to a fasta file, and the tree is written to a newick file.
-"""
+""" * SHARED_SIMDOC)
 function sim_alphabeta_seqs(alphavec::Vector{Float64}, betavec::Vector{Float64}, singletree, nucmat::Array{Float64,2}, f3x4::Array{Float64,2};
                             scale_total_tree_neutral_expected_subs = -1.0, outpath = "")
     @assert length(alphavec) == length(betavec)
