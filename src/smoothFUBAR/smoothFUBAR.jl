@@ -79,7 +79,7 @@ function HMCsample(ℓπ, n_samples; n_adapts = 200)
         model,
         sampler,
         n_adapts + n_samples;
-        nadapts = n_adapts,
+        n_adapts = n_adapts,
         initial_params = ℓπ.flat_initial_θ,
     )
     return samples
