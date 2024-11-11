@@ -59,7 +59,13 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1, grid_function =
         for (b,beta) in enumerate(grid_values)
             alpha_vec[i],beta_vec[i] = alpha, beta
             alpha_ind_vec[i], beta_ind_vec[i] = a,b
-            m = DiagonalizedCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4_freqs))
+            try 
+                m = DiagonalizedCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4_freqs))
+            catch InexactError
+                println("Got InexactError, retrying with GeneralCTMC")
+                m = GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4_freqs))
+            end
+            
             felsenstein!(tree,m)
             combine!(tree.message[1],tree.parent_message[1])
             LL_matrix[i,:] .= MolecularEvolution.site_LLs(tree.message[1])
