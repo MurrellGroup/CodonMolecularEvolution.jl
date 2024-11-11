@@ -115,7 +115,6 @@ other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts, posterior_
 function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_samples = 500, n_adapts = 200, K = 50, sigma = 0.03, verbosity=1, plots = true)
     verbosity > 0 && println("Step 4: Estimating posterior surface by HMC.")
     ℓπ = model_init(method, f, K, sigma)
-    println("K = $K")
     samples = HMCsample(ℓπ, HMC_samples, n_adapts = n_adapts)
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in n_adapts+1:length(samples)])
     core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts, plots = plots)
@@ -127,6 +126,11 @@ end
 function smoothFUBAR(method::HMC_FUBAR, f::FUBARgrid, outpath;
     pos_thresh=0.95, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, K = 50,
     sigma = 0.03, HMC_samples = 500, n_adapts = 200, plots = true)
+
+    if isodd(K)
+        error("Invalid K value: $K. K must be even.")
+    end
+
     exports && init_path(outpath)
     RFF_tuple = FUBAR_HMCfitRFF(method, f, outpath, HMC_samples = HMC_samples, n_adapts = n_adapts, K = K, sigma = sigma, verbosity = verbosity, plots = plots)
     df_results = FUBAR_tabulate_from_θ(RFF_tuple.θ, f, outpath, posterior_threshold = pos_thresh, verbosity = verbosity, plots = plots)
