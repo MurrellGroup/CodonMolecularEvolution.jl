@@ -115,6 +115,7 @@ other_plots(LP::LogPosteriorRFF, samples, f, analysis_name, n_adapts, posterior_
 function FUBAR_HMCfitRFF(method::HMC_FUBAR, f::FUBARgrid, analysis_name; HMC_samples = 500, n_adapts = 200, K = 50, sigma = 0.03, verbosity=1, plots = true)
     verbosity > 0 && println("Step 4: Estimating posterior surface by HMC.")
     ℓπ = model_init(method, f, K, sigma)
+    println("K = $K")
     samples = HMCsample(ℓπ, HMC_samples, n_adapts = n_adapts)
     posterior_mean_θ = mean([thetas(ℓπ, samples[i].z.θ) for i in n_adapts+1:length(samples)])
     core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts, plots = plots)
