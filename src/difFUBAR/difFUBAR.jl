@@ -180,14 +180,17 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
     if exports
-        #Replace with Phylo.jl based plot?
-        color_dict = Dict(zip(getnodelist(tree), [tag_colors[model_ind(n.name, tags)] for n in getnodelist(tree)]))
-        label_dict = Dict(zip(getnodelist(tree), [strip_tags_from_name(n.name) for n in getnodelist(tree)]))
-        img = tree_draw(tree, canvas_height=(3 + length(getleaflist(tree)) / 5)cm,
-            draw_labels=true, dot_color_dict=color_dict,
-            line_color_dict=color_dict, line_width=0.3, min_dot_size=0.01,
-            nodelabel_dict=label_dict)
-        img |> SVG(analysis_name * "_tagged_input_tree.svg", 15cm, (3 + length(getleaflist(tree)) / 5)cm)
+        #TODO: update plots in docs
+        phylo_tree = get_phylo_tree(tree)
+        tagging = [tag_colors[model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
+        for node in nodeiter(phylo_tree)
+            renamenode!(phylo_tree, node, strip_tags_from_name(node.name))
+        end
+        #Warnings regarding marker- and linecolor also appear in the Phylo.jl docs example
+        #Note: sometimes long leafnames are truncated/not visible in the plot
+        pl = plot(phylo_tree,
+            showtips = true, tipfont = 6, markercolor = tagging, linecolor = tagging, markerstrokewidth = 0, size = (600, (120 + length(getleaflist(tree)) * 8)))
+        savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
     end
 
     #Tags and tag colors are now ordered, and tag_colors includes the untagged category
