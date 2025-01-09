@@ -290,7 +290,7 @@ function optimize_nuc_mu(seqnames, seqs, tree; leaf_name_transform=x -> x, genet
     return tree, final_params, nuc_pi
 end
 
-function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
+function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code, verbosity = 1)
     #Now we optimize alpha and beta rates using a codon model
     #Count F3x4 frequencies from the seqs, and estimate codon freqs from this
     f3x4 = MolecularEvolution.count_F3x4(seqs)
@@ -306,7 +306,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     function build_model_vec(alpha, beta; F3x4=f3x4)
         #Need to pass through genetic code here!
         #If you run into numerical issues with DiagonalizedCTMC, switch to GeneralCTMC instead
-        return GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
+        return robust_CTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4, genetic_code=genetic_code))
     end
 
     function objective(alpha=1, beta=1; tree=tree, eq_freqs=eq_freqs)
@@ -351,6 +351,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     iters = 0
     xvec = [alpha - ε, alpha, alpha + ε]
     yvec = map(x -> objective(x, beta), xvec)
+    max_obj = 0.0
     while abs(alpha - prev_alpha) > low_tol && iters < maxiters
         prev_alpha = alpha
         if iters > 0 #We use this order to avoid one potential objective call
@@ -365,6 +366,8 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
         alpha = MolecularEvolution.new_max(xvec, yvec)
         iters += 1
     end
+    
+    verbosity > 0 && println("Optimized single α,β LL=$(max_obj) with α=$(alpha) and β=$(beta).")
     #tree, alpha, beta, F3x4, eq_freqs
     return tree, alpha, beta, f3x4, eq_freqs
 end
@@ -432,56 +435,4 @@ function MG94_cacher(code)
         return d[args]
     end
     return cached_model
-end
-
-#Modified to allow an option renaming function that can eg. strip tags from the tree when matching seq data
-function MolecularEvolution.populate_tree!(
-    tree::FelNode,
-    starting_message::Vector{<:Partition},
-    names,
-    data;
-    init_all_messages=true,
-    tolerate_missing=1, #0 = error if missing; 1 = warn and set to missing data; 2 = set to missing data
-    leaf_name_transform=x -> x
-)
-    if init_all_messages
-        internal_message_init!(tree, starting_message)
-    else
-        tree.parent_message = copy_message(starting_message)
-    end
-    name_dic = Dict(zip(names, 1:length(names)))
-    for n in getleaflist(tree)
-        if haskey(name_dic, leaf_name_transform(n.name))
-            MolecularEvolution.populate_message!(n.message, data[name_dic[leaf_name_transform(n.name)]])
-        else
-            warn_str = n.name * " on tree but not found in names."
-            if tolerate_missing == 0
-                @error warn_str
-            end
-            if tolerate_missing == 1
-                @warn warn_str
-            end
-            uninformative_message!(n.message)
-        end
-    end
-end
-
-function MolecularEvolution.populate_tree!(
-    tree::FelNode,
-    starting_partition::Partition,
-    names,
-    data;
-    init_all_messages=true,
-    tolerate_missing=1,
-    leaf_name_transform=x -> x
-)
-    MolecularEvolution.populate_tree!(
-        tree,
-        [starting_partition],
-        names,
-        data,
-        init_all_messages=init_all_messages,
-        tolerate_missing=tolerate_missing,
-        leaf_name_transform=leaf_name_transform
-    )
 end
