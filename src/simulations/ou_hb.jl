@@ -1,6 +1,8 @@
 #Halpern and Bruno model where amino acid fitnesses evolve over time using a piecewise constant approximation to an OU process.
 #Authors: Hassan Sadiq and Ben Murrell
 
+const d_code = MolecularEvolution.universal_code
+
 """
     HB_fixation_rate(from_codon, to_codon)
 
@@ -283,11 +285,13 @@ q1[c,c] = 0
 =#
 
 """
+    dNdS(q1, q0, p; code = MolecularEvolution.universal_code)
     dNdS(q1, q0; code = MolecularEvolution.universal_code)
 
-Returns an analytic estimate of the dN/dS ratio for a codon model. `q1` is the rate matrix where selection is active (eg. a Halpern and Bruno model with a set of fitnesses),
+Returns an analytic expectation of the dN/dS ratio for a codon model. `q1` is the rate matrix where selection is active (eg. a Halpern and Bruno model with a set of fitnesses),
 and `q0` is the corresponding rate matrix where selection is inactive (eg. a Halpern and Bruno model with all fitnesses equal).
-
+`p` is the frequency distribution over codons that the dN/dS ratio is computed against. If not provided, this is computed as the equilibrium from `q1`.
+If only a vector of fitnesses are provided, then the `q1`, `q0`, and `p` are computed assuming a Halpern and Bruno model.
 ```
 fs = randn(20)
 nucm = CodonMolecularEvolution.demo_nucmat
@@ -296,8 +300,7 @@ q0 = HB98AA_matrix(1.0, nucm, zeros(20))
 dNdS(q1, q0)
 ```
 """
-function dNdS(q1, q0; code = MolecularEvolution.universal_code)
-    p = exp(q1 * 100)[1,:]
+function dNdS(q1, q0, p; code = d_code)
     nsi = [CartesianIndex(i[1][1], i[1][2]) for i in code.nonsyn_positions]
     si = [CartesianIndex(i[1][1], i[1][2]) for i in code.syn_positions]
     dN_numerator = sum((q1 .* p)[nsi])
@@ -308,3 +311,50 @@ function dNdS(q1, q0; code = MolecularEvolution.universal_code)
     ds = (dS_numerator/dS_denominator)
     return dn/ds
 end
+
+dNdS(q1, q0; code = MolecularEvolution.universal_code) = dNdS(q1, q0, exp(q1 * 100)[1,:], code = code)
+
+"""
+    HBdNdS(fs::Vector{Float64}; code = MolecularEvolution.universal_code, nucm = CodonMolecularEvolution.demo_nucmat)
+    HBdNdS(fs_pre::Vector{Float64}, fs_post::Vector{Float64}; code = MolecularEvolution.universal_code, nucm = CodonMolecularEvolution.demo_nucmat)
+
+Returns the expected dN/dS ratio for a Halpern and Bruno model with a vector of fitnesses. If two vectors are provided, then the dN/dS ratio is computed for the shift from `fs_pre` to `fs_post`.
+"""
+function HBdNdS(fs::Vector{Float64}; code = d_code, nucm = CodonMolecularEvolution.demo_nucmat) 
+    q1 = HB98AA_matrix(1.0, nucm, fs, genetic_code = code)
+    q0 = HB98AA_matrix(1.0, nucm, zeros(20), genetic_code = code)
+    dNdS(q1, q0, exp(q1 * 100)[1,:], code = code)
+end
+
+HBdNdS(fs_pre::Vector{Float64}, fs_post::Vector{Float64}; code = d_code, nucm = CodonMolecularEvolution.demo_nucmat) = dNdS(HB98AA_matrix(1.0, nucm, fs_post, genetic_code = code), HB98AA_matrix(1.0, nucm, zeros(20), genetic_code = code), exp(HB98AA_matrix(1.0, nucm, fs_pre, genetic_code = code) * 100)[1,:], code = code)
+
+"""
+    approx_std2maxdNdS(σ)
+
+Approximation for the maximum dN/dS ratio as a function of the standard deviation of the fitnesses, assuming Gaussian fitnesses and a Halpern and Bruno model,
+where the fitnesses have just shifted from one Gaussian sample to another. Note: this is not an analytical solution, but a serindipitously good approximation.
+
+```
+function monte_carlo_maxdNdS(σ; N=100_000)
+    sum_val = 0.0
+    for _ in 1:N
+        f_i = σ * randn()
+        f_j = σ * randn()
+        sum_val += HB_fixation_rate(f_i, f_j)
+    end
+    return sum_val / N
+end
+vs = 0:0.01:10
+plot(vs, monte_carlo_maxdNdS.(vs), label = "Monte Carlo", alpha = 0.8)
+plot!(vs, approx_std2maxdNdS.(vs), label = "Approx", linestyle = :dash, alpha = 0.8)
+```
+"""
+approx_std2maxdNdS(σ) = sqrt(σ^2 + π) / sqrt(π)
+
+"""
+    approx_maxdNdS2std(ω)
+
+Inverse of approx_std2maxdNdS(σ). Estimates the standard deviation of the fitnesses that will produce, in expectation, a dN/dS ratio of `ω`, assuming Gaussian fitnesses and a Halpern and Bruno model,
+where the fitnesses have just shifted from one Gaussian sample to another. Note: this is not an analytical solution, but a serindipitously good approximation.
+"""
+approx_maxdNdS2std(ω) = sqrt(π * (ω^2 - 1))
