@@ -17,7 +17,7 @@ pl = plot(get_phylo_tree(tree), showtips = false, marker_z = "g", line_z = "g", 
 savefig("tagged_simtree_phylo.svg")
 ```
 
-![](tagged_simtree_phylo.svg)
+![](figures/tagged_simtree_phylo.svg)
 
 ```julia
 #500 codon sites in total, where 100 will undergo a fitness shift:
@@ -37,7 +37,7 @@ scatter!(selsites, [HBdNdS(m0fs[:,i], m1fs[:,i], nucm = nucm) for i in selsites]
 savefig("dnds_plot.svg")
 ```
 
-![](dnds_plot.svg)
+![](figures/dnds_plot.svg)
 
 ```julia
 #Specify two models, m1 and m2, sharing alpha but with different fitnesses for the `selsites` sites:
