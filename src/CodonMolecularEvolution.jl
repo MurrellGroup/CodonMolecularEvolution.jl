@@ -14,6 +14,7 @@ include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
 
 include("simulations/alphabeta/alphabeta.jl")
+include("simulations/ou_hb.jl")
 
 export 
     difFUBARBaseline,
@@ -21,6 +22,15 @@ export
     difFUBARTreesurgery,
     difFUBARTreesurgeryAndParallel,
     FUBAR,
-    smoothFUBAR
-
+    smoothFUBAR,
+    dNdS,
+    HBdNdS,
+    approx_std2maxdNdS,
+    approx_maxdNdS2std,
+    HB98AA_matrix,
+    ShiftingHBSimModel,
+    ShiftingHBSimPartition,
+    PiecewiseOUModel,
+    shiftingHBviz,
+    HBviz
 end
