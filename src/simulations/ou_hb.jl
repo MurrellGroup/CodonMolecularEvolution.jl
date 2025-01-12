@@ -439,7 +439,7 @@ HBviz(ts, fst, T, alpha, nucm)
 """
 function HBviz(ts::Vector{Float64}, fst::Vector{Vector{Float64}}, T::Float64, alp, nucm;
                 scram = [8, 4, 11, 17, 9, 14, 18, 2, 10, 13, 16, 20, 12, 6, 19, 7, 1, 15, 5, 3],
-                viz_size = (1200,500))
+                viz_size = (1200,500), σ = nothing)
     cfc, tc, dndses = time_varying_HB_freqs(ts, T, fst, ones(61)/61, alpha = alp)
     perm = sortperm(MolecularEvolution.universal_code.amino_acid_lookup)
     AA_nums = MolecularEvolution.universal_code.codon2AA_pos[perm]
@@ -463,8 +463,10 @@ function HBviz(ts::Vector{Float64}, fst::Vector{Vector{Float64}}, T::Float64, al
     pl3 = plot(tc, dndses, size = viz_size, xlim = (0, T), xlabel = "Time", ylabel = L"E_C_t[dN/dS|f_t]", ylim = (0, maximum(dndses[tc .>= 0]) + 0.1),
         label = :none, top_margin = -12Plots.mm, color = "black")
     plot!([0,T], [1,1], color = "black", linestyle = :dash, alpha = 0.5, label = :none)
-    maxdnds = approx_std2maxdNdS(σ)
-    plot!([0,T], [maxdnds,maxdnds], color = "red", linestyle = :dash, alpha = 0.5, label = :none)
+    if !isnothing(σ)
+        maxdnds = approx_std2maxdNdS(σ)
+        plot!([0,T], [maxdnds,maxdnds], color = "red", linestyle = :dash, alpha = 0.5, label = :none)
+    end
     return plot(pl1, pl2, pl3, layout=(3, 1), link=:x, margins = 8Plots.mm, plot_layout = :tight, widen=false, tickdirection=:out)
 end
 
@@ -494,5 +496,5 @@ function shiftingHBviz(T, event_rate, σ, mixing_rate, alpha, nucm; T0 = -20)
     prepend!(coll, [(0.0, 1, fs)])
     ts = [c[1] for c in coll] .+ T0
     fst = [c[3] for c in coll]
-    return HBviz(ts, fst, T, alpha, nucm)
+    return HBviz(ts, fst, T, alpha, nucm, σ = σ)
 end
