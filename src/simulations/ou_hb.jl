@@ -358,3 +358,141 @@ Inverse of approx_std2maxdNdS(σ). Estimates the standard deviation of the fitne
 where the fitnesses have just shifted from one Gaussian sample to another. Note: this is not an analytical solution, but a serindipitously good approximation.
 """
 approx_maxdNdS2std(ω) = sqrt(π * (ω^2 - 1))
+
+
+
+"""
+    time_varying_HB_freqs(ts, T, fst, init_freqs; nucm = CodonMolecularEvolution.demo_nucmat, alpha = 1.0, delta_t = 0.002, prezero_delta_t = 0.5)
+
+Compute the time-varying codon frequencies and expected dN/dS over time for a sequence of fitnesses, under the Halpern-Bruno model.
+`ts` is a vector of times, `T` is the total time, `fst` is a vector of vector of fitnesses, `init_freqs` is the initial codon frequencies,
+`nucm` is the nucleotide substitution matrix, `alpha` is the alpha parameter, `delta_t` is the discretization time step for the simulation,
+and `prezero_delta_t` is the time step used before `t=0`. `fst[i]` is assumed to be the fitness between `t = ts[i]` and `t = ts[i+1]`.
+"""
+function time_varying_HB_freqs(ts, T, fst, init_freqs; nucm = CodonMolecularEvolution.demo_nucmat, alpha = 1.0, delta_t = 0.002, prezero_delta_t = 0.5)
+    cod_freq_collection = []
+    t_collection = []
+    dnds_collection = []
+    ind = 1
+    ts = [ts; Inf]
+    t = ts[ind]
+    codon_freqs = copy(init_freqs)
+    while (t < T) && (ind + 1 <= length(ts))
+        if t < 0-prezero_delta_t
+            dt = min(prezero_delta_t, ts[ind + 1] - t)
+        else
+            dt = min(delta_t, ts[ind + 1] - t)
+        end
+        Q = HB98AA_matrix(alpha, nucm, fst[ind])
+        P = exp(Q * dt)
+        codon_freqs = (codon_freqs' * P)'
+        push!(cod_freq_collection, copy(codon_freqs))
+        push!(dnds_collection, dNdS(Q, HB98AA_matrix(alpha, nucm, zeros(20)), codon_freqs))
+        if t + dt >= ts[ind + 1]
+            ind += 1
+        end
+        t += dt
+        push!(t_collection, t)
+    end
+    return cod_freq_collection, t_collection, dnds_collection
+end
+
+
+function piecewise_linear_plot!(t_vec, fs_vec, tmax; shift = NaN, colors = nothing, kw...)
+    fs = zeros(length(fs_vec[1]), length(fs_vec)*3)
+    ts = zeros(length(fs_vec)*3)
+    push!(t_vec, tmax)
+    for i in 1:length(fs_vec)
+        fs[:, 3i-2:3i-1] .= fs_vec[i]
+        fs[:, 3i] .= fs_vec[i] .+ shift
+        ts[3i-2:3i] .= [t_vec[i], t_vec[i+1], t_vec[i+1]]
+    end
+    for i in 1:size(fs, 1)
+        plot!(ts, fs[i,:], label = :none, color = colors[i]; kw...)
+    end
+end
+
+function add_muller!(pos_mean_matrix; x_ax = 1:size(pos_mean_matrix)[2], plot_theme = nothing, plot_perm = 1:size(pos_mean_matrix)[1],
+    edge_pad = 6, fillalpha = 0.8, colormap = 1:size(pos_mean_matrix)[1])
+    pmm = pos_mean_matrix[plot_perm,:]
+    cum_freq = zeros(size(pmm)[2])
+    for i in 1:size(pmm)[1]
+        plot!(x_ax,1 .- cum_freq, fillrange = 1 .- (cum_freq .+ pmm[i,:]), fillalpha = fillalpha, linewidth = 0, color = plot_theme[colormap[plot_perm[i]]], label = :none)
+        cum_freq .+= pmm[i,:]
+    end
+end
+
+"""
+    HBviz(ts, fst, T, alp, nucm)
+
+Visualize over time the fitness trajectory, the codon frequencies, and the expected dN/dS. `ts` is a vector of times, `fst` is a vector of fitnesses, `T` is the total time, `alp` is the alpha parameter, and `nucm` is the nucleotide substitution matrix.
+
+```julia
+σ = 2.0
+alpha = 1.0
+nucm = CodonMolecularEvolution.demo_nucmat
+fst = [randn(20) .* σ, randn(20) .* σ]
+ts = [-100.0, 1.0]
+T = 2.0
+HBviz(ts, fst, T, alpha, nucm)
+```
+"""
+function HBviz(ts::Vector{Float64}, fst::Vector{Vector{Float64}}, T::Float64, alp, nucm;
+                scram = [8, 4, 11, 17, 9, 14, 18, 2, 10, 13, 16, 20, 12, 6, 19, 7, 1, 15, 5, 3],
+                viz_size = (1200,500))
+    cfc, tc, dndses = time_varying_HB_freqs(ts, T, fst, ones(61)/61, alpha = alp)
+    perm = sortperm(MolecularEvolution.universal_code.amino_acid_lookup)
+    AA_nums = MolecularEvolution.universal_code.codon2AA_pos[perm]
+    colorv = zeros(Int, 61)
+    c = 1
+    for i in 1:20
+        s = findall(AA_nums .== i)
+        colorv[c:c+length(s)-1] .= 10*(scram[i]-1) .+ collect(1:length(s)) .* 2 .- 1
+        c += length(s)
+    end
+    plot_theme_exploded = cgrad(:rainbow, 200, categorical = true)
+    AA_plot_theme = plot_theme_exploded[1 .+ (10 .* (scram .- 1))]
+    plot_theme = plot_theme_exploded[colorv]
+    pl1 = plot(tc, zeros(length(tc)), size = viz_size, xlim = (0, T), linestyle = :dash, color = "black", alpha = 0.0,
+                ylabel = L"f_t", xtickfontcolor = RGBA(0,0,0,0), legend=false)
+    fl = findlast(ts .<= 0)
+    extr = maximum([maximum(abs.(f)) for f in fst[fl:end]]) * 1.1
+    piecewise_linear_plot!(ts, fst, T, colors = AA_plot_theme, ylims = (-extr, extr))
+    pl2 = plot(tc, zeros(length(tc)), size = viz_size, alpha = 0.0, xlim = (0, T), ylabel = L"C_t", xtickfontcolor = RGBA(0,0,0,0), legend=false, top_margin = -12Plots.mm)
+    add_muller!(stack(cfc)[perm,:], plot_theme = plot_theme, x_ax = tc)
+    pl3 = plot(tc, dndses, size = viz_size, xlim = (0, T), xlabel = "Time", ylabel = L"E_C_t[dN/dS|f_t]", ylim = (0, maximum(dndses[tc .>= 0]) + 0.1),
+        label = :none, top_margin = -12Plots.mm, color = "black")
+    plot!([0,T], [1,1], color = "black", linestyle = :dash, alpha = 0.5, label = :none)
+    maxdnds = approx_std2maxdNdS(σ)
+    plot!([0,T], [maxdnds,maxdnds], color = "red", linestyle = :dash, alpha = 0.5, label = :none)
+    return plot(pl1, pl2, pl3, layout=(3, 1), link=:x, margins = 8Plots.mm, plot_layout = :tight, widen=false, tickdirection=:out)
+end
+
+"""
+    shiftingHBviz(T, event_rate, σ, mixing_rate, alpha, nucm; T0 = -20)
+
+Visualize the fitness trajectory, codon frequencies, and expected dN/dS over time for a shifting HB process.
+`T` is the total time, `event_rate` is the rate of fitness shifts, `σ` is the standard deviation of the fitnesses,
+`mixing_rate` is the rate of mixing between fitnesses, `alpha` is the alpha parameter, and `nucm` is the nucleotide substitution matrix.
+`T0` controls the burnin time, to ensure the process is at equilibrium at `t=0`.
+
+```julia
+T = 2.0
+mix = 1.0
+σ = 5.0
+event_rate = 100.0
+alpha = 1.0
+nucm = CodonMolecularEvolution.demo_nucmat
+shiftingHBviz(T, event_rate, σ, mix, alpha, nucm)
+```
+"""
+function shiftingHBviz(T, event_rate, σ, mixing_rate, alpha, nucm; T0 = -20)
+    fs = randn(20) .* σ
+    m = PiecewiseOUModel(event_rate, σ, mixing_rate)
+    coll = []
+    newfs, _, _, jumps = jumpy_HB_codon_evolve(fs, 1, m, nucm, alpha, T-T0, push_into = coll)
+    prepend!(coll, [(0.0, 1, fs)])
+    ts = [c[1] for c in coll] .+ T0
+    fst = [c[3] for c in coll]
+    return HBviz(ts, fst, T, alpha, nucm)
+end
