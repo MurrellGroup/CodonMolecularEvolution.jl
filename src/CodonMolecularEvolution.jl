@@ -1,6 +1,6 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, Measures, Compose, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, LaTeXStrings
+using FASTX, MolecularEvolution, Measures, Compose, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, LaTeXStrings, Random
 using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, Interpolations, MCMCChains
 
 abstract type difFUBARGrid end
