@@ -441,6 +441,17 @@ function HBviz(ts::Vector{Float64}, fst::Vector{Vector{Float64}}, T::Float64, al
                 scram = [8, 4, 11, 17, 9, 14, 18, 2, 10, 13, 16, 20, 12, 6, 19, 7, 1, 15, 5, 3],
                 viz_size = (1200,500), σ = nothing)
     cfc, tc, dndses = time_varying_HB_freqs(ts, T, fst, ones(61)/61, alpha = alp)
+    #Removing burnin:
+    prezero = findlast(tc .<= 0)
+    prezero = prezero == nothing ? 1 : prezero
+    tc = tc[prezero:end]
+    cfc = cfc[prezero:end]
+    dndses = dndses[prezero:end]
+    fl = findlast(ts .<= 0)
+    fl = fl == nothing ? 1 : fl
+    ts = ts[fl:end]
+    fst = fst[fl:end]
+    ###
     perm = sortperm(MolecularEvolution.universal_code.amino_acid_lookup)
     AA_nums = MolecularEvolution.universal_code.codon2AA_pos[perm]
     colorv = zeros(Int, 61)
@@ -450,13 +461,12 @@ function HBviz(ts::Vector{Float64}, fst::Vector{Vector{Float64}}, T::Float64, al
         colorv[c:c+length(s)-1] .= 10*(scram[i]-1) .+ collect(1:length(s)) .* 2 .- 1
         c += length(s)
     end
-    plot_theme_exploded = cgrad(:rainbow, 200, categorical = true)
+    plot_theme_exploded = cgrad(:darkrainbow, 200, categorical = true)
     AA_plot_theme = plot_theme_exploded[1 .+ (10 .* (scram .- 1))]
     plot_theme = plot_theme_exploded[colorv]
     pl1 = plot(tc, zeros(length(tc)), size = viz_size, xlim = (0, T), linestyle = :dash, color = "black", alpha = 0.0,
                 ylabel = L"f_t", xtickfontcolor = RGBA(0,0,0,0), legend=false)
-    fl = findlast(ts .<= 0)
-    extr = maximum([maximum(abs.(f)) for f in fst[fl:end]]) * 1.1
+    extr = maximum([maximum(abs.(f)) for f in fst]) * 1.1
     piecewise_linear_plot!(ts, fst, T, colors = AA_plot_theme, ylims = (-extr, extr))
     pl2 = plot(tc, zeros(length(tc)), size = viz_size, alpha = 0.0, xlim = (0, T), ylabel = L"C_t", xtickfontcolor = RGBA(0,0,0,0), legend=false, top_margin = -12Plots.mm)
     add_muller!(stack(cfc)[perm,:], plot_theme = plot_theme, x_ax = tc)
