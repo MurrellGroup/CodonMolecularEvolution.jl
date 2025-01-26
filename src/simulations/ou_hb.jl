@@ -238,7 +238,7 @@ mutable struct ShiftingHBSimPartition <: CodonSimulationPartition
             fits[:,i] .= randn(length(model.code.amino_acids)) .* m.eq_std .+ m.mu
         end
         #Starting codons ignore codon_offsets. Should be ok because burn-in, but should adjust.
-        codons = [sample(1:61, Weights(HB98AA_eqfreqs(fits[:,i] .+ m.codon_offsets))) for i in 1:length(model.ou_params)]
+        codons = [sample(1:61, Weights(HB98AA_eqfreqs(fits[:,i] .+ model.ou_params[i].codon_offsets))) for i in 1:length(model.ou_params)]
         for (i,m) in enumerate(model.ou_params)
             f, c, _, _ = jumpy_HB_codon_evolve(fits[:,i], codons[i], m, model.nuc_matrix, model.alphas[i], burnin_time, genetic_code = model.code)
             fits[:,i] .= f
@@ -309,7 +309,7 @@ Returns the expected dN/dS ratio for a Halpern and Bruno model with a vector of 
 function HBdNdS(fs::Vector{Float64}; code = d_code, nucm = CodonMolecularEvolution.demo_nucmat) 
     q1 = HB98AA_matrix(1.0, nucm, fs, genetic_code = code)
     q0 = HB98AA_matrix(1.0, nucm, zeros(20), genetic_code = code)
-    return dNdS(q1, q0, HB98AA_eqfreqs(fs, code = code), code = code)
+    return dNdS(q1, q0, HB98AA_eqfreqs(fs, genetic_code = code), code = code)
 end
 
 HBdNdS(fs_pre::Vector{Float64}, fs_post::Vector{Float64}; code = d_code, nucm = CodonMolecularEvolution.demo_nucmat) = dNdS(HB98AA_matrix(1.0, nucm, fs_post, genetic_code = code), HB98AA_matrix(1.0, nucm, zeros(20), genetic_code = code), exp(HB98AA_matrix(1.0, nucm, fs_pre, genetic_code = code) * 100)[1,:], code = code)

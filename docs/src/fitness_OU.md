@@ -26,7 +26,7 @@ selsites = sort(sample(1:S, nsel, replace = false))
 nucm = CodonMolecularEvolution.demo_nucmat #Using a nuc matrix derived from a flu dataset
 
 #Compute std dev of fitnesses for the target peak dN/dS, aiming for a mean dN/dS of 2.0 at the fitness shift boundary:
-σ = approx_maxdNdS2std(2.0)
+σ = maxdNdS2std(2.0)
 m0fs = randn(20,S) .* σ
 m1fs = copy(m0fs)
 m1fs[:,selsites] .= randn(20,nsel) .* σ
@@ -41,6 +41,8 @@ savefig("dnds_plot.svg")
 
 ```julia
 #Specify two models, m1 and m2, sharing alpha but with different fitnesses for the `selsites` sites:
+using Distributions
+
 alphas = rand(Gamma(10,0.1), S)
 m1 = ShiftingHBSimModel(S, alphas, [PiecewiseOUModel(m0fs[:,i]) for i in 1:S], nucm)
 m2 = ShiftingHBSimModel(S, alphas, [PiecewiseOUModel(m1fs[:,i]) for i in 1:S], nucm)
@@ -49,12 +51,11 @@ m2 = ShiftingHBSimModel(S, alphas, [PiecewiseOUModel(m1fs[:,i]) for i in 1:S], n
 mfunc(n) = occursin("{G2}", n.name) ? [m2] : [m1]
 
 #The process should be at equilibrium for whatever the root model is, and this will use the root model:
-internal_message_init!(tree, ShiftingHBSimPartition(nucm, mfunc(tree)[1].ou_params))
+internal_message_init!(tree, ShiftingHBSimPartition(m1))
 
 #Simeulate under this process:
 sample_down!(tree, mfunc)
 
 #Write sequences to a .fasta file:
-seqs = [partition2string(n.message[1]) for n in getleaflist(tree)]
-write_fasta("simu_seqs.fasta", seqs, seq_names = [n.name for n in getleaflist(tree)])
+write_fasta("simu_seqs.fasta", leaf_samples(tree), seq_names = leaf_names(tree))
 ```
