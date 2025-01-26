@@ -232,7 +232,7 @@ function gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_gri
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !MolecularEvolution.isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
     
     codon_param_vec = [[a] for a in alphagrid]
