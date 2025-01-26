@@ -1,6 +1,21 @@
 #Halpern and Bruno model where amino acid fitnesses evolve over time using a piecewise constant approximation to an OU process.
 #Authors: Hassan Sadiq and Ben Murrell
 
+#To do:
+#- Check that an alternate genetic code will thread through all of this.
+#- Introduce a jump model with an additional class of jumps to independent draws from the equilibrium fits, and make it easy to use this instead
+#- Allow viz functions to have both kids of offsets (include the AA offsets in the fitness plot, but not the codon offsets)
+
+abstract type CodonSimulationPartition <: Partition end #Must have .sites::Int64, .codons::Vector{Int64}, and .code::GeneticCode
+
+#Does nothing because the `forward!` function implicitly samples.
+function MolecularEvolution.sample_partition!(p::CodonSimulationPartition)
+end
+
+function MolecularEvolution.partition2obs(part::CodonSimulationPartition)
+    return join([part.code.sense_codons[part.codons[i]] for i in 1:part.sites])
+end
+
 const d_code = MolecularEvolution.universal_code
 
 """
@@ -26,235 +41,6 @@ plot(r, t0.(r) .- t1.(r), label = "1/12 * (12 + diff*(6 + diff))")
 =#
 
 """
-    PiecewiseOUModel(event_rate::Float64, eq_std::Float64,independence::Float64; delta_t = 1.0)
-    PiecewiseOUModel(offsets::Vector{Float64})
-
-A piecewise constant approximation to an OU process, intended to simulate fitnesses evolving over phylogenies.
-The equilibrium standard deviation is directly parameterized (`eq_std`), as is the rate at which the process mixes to equilibrium (`mixing`).
-`event_rate` controls how often the fitness changes occur, where the mixing rate is scaled to compensate for the increased rate of change to achieve
-approximately the same amount of change per unit time even as the `event_rate` changes. A very high `event_rate` will behave more like continuous diffusion,
-but will be more computationally expensive to sample from. `mu` can also be set to control the mean fitnesses.
-The model also permits `offsets`, which are added to the fitnesses as they are passed into the model. For a single process, these are confounded with the mean `mu`
-but if the offsets change (eg. from one branch to another) the effective fitnesses will immidiately change, whereas if `mu` changes the fitnesses will drift towards `mu`.
-"""
-mutable struct PiecewiseOUModel{M<:Union{Float64,AbstractVector{Float64}},O<:Union{Float64,AbstractVector{Float64}}} 
-    mu::M #OU mean. Scalar (in which case it is the same for all AAs) or vector (one per AA)
-    delta_t::Float64 #Scales the size of the fitness jumps
-    var::Float64 #OU variance
-    reversion_rate::Float64 #Rate of reversion to the mean
-    event_rate::Float64 #Rate of fitness jumps
-    offsets::O #These do not change, thus allowing preferred codons. Incorporated right at the end.
-    eq_std::Float64 #Standard deviation of the equilibrium distribution
-    function PiecewiseOUModel(event_rate::Float64, eq_std::Float64, mixing::Float64; delta_t = 1.0)
-        new{Float64,Float64}(0.0, 1.0, 2*(mixing/event_rate)*(eq_std^2), mixing/event_rate, event_rate, 0.0, eq_std)
-    end
-    function PiecewiseOUModel(offsets::Vector{Float64}) #Constructor for static model, using just offsets for fitnesses
-        new{Float64,Vector{Float64}}(0.0, 1.0, 1e-15, 1.0, 0.0, offsets, 1e-15)
-    end
-end
-
-"""
-    ou_jump(x_source, delta_t::Float64, mu::Union{Float64,Vector{Float64}}, sigma2::Float64, theta::Float64)
-
-Evolves values over time using a piecewise constant approximation to an OU process, where this function computes the new distribution for a single discrete jump.
-`x_source` is the vector of fitnesses, `delta_t` is the time step, `mu` is the mean fitness, `sigma2` is the variance, and `theta` is the reversion rate.
-"""
-function ou_jump(x_source, delta_t::Float64, mu::Union{Float64,Vector{Float64}}, sigma2::Float64, theta::Float64)
-    sqrt_ou_var = sqrt((sigma2/(2*theta)) * (1 - exp(-2 * theta * delta_t)))
-    mu_multiplier = exp(-theta * delta_t)
-    return randn(length(x_source)) .* sqrt_ou_var .+ mu .+ ((x_source .- mu) .* mu_multiplier)
-end
-
-function ou_jump(x_source, m::PiecewiseOUModel)
-    return ou_jump(x_source, m.delta_t, m.mu, m.var, m.reversion_rate)
-end
-
-#Todo: Introduce a model with jumps to random equilibrium fits using dispatch here, just by overloading ou_jump on a different model type.
-
-"""
-    HB98AA_row(current_codon, alpha, nuc_matrix, AA_fitness; genetic_code=MolecularEvolution.universal_code)
-
-Returns the rate row for a codon model using the HB98 model where each AA has a different fitness. `current_codon` is the current codon, `alpha` is the synonymous rate,
-`nuc_matrix` is the symmetric nucleotide substitution matrix, and `AA_fitness` is the fitness of each amino acid.
-"""
-function HB98AA_row(current_codon, alpha, nuc_matrix, AA_fitness; genetic_code=MolecularEvolution.universal_code)
-    row = zeros(genetic_code.num_sense)
-    codon_aa_i = AA_fitness[genetic_code.codon2AA_pos[current_codon]]
-    for j in 1:genetic_code.num_sense
-        if genetic_code.codon_to_nuc_map[current_codon,j] != (-1,-1,-1)
-            c2n_map = genetic_code.codon_to_nuc_map[current_codon,j]
-            f_ab = HB_fixation_rate(codon_aa_i,AA_fitness[genetic_code.codon2AA_pos[j]])
-            row[j] = alpha * nuc_matrix[c2n_map[2],c2n_map[3]] * f_ab
-        end
-    end
-    return row
-end
-
-"""
-    jumpy_HB_codon_evolve(fitnesses, codon, ou_model, nuc_matrix, alpha, time;
-        genetic_code = MolecularEvolution.universal_code, push_into = nothing)
-
-Evolves fitnesses and codons over time using the HB98 model. `fitnesses` is the vector of fitnesses, `codon` is the current codon, `ou_model` is the OU model,
-`nuc_matrix` is the symmetric nucleotide substitution matrix, `alpha` is the synonymous rate, and `time` is the total time to evolve over.
-"""
-function jumpy_HB_codon_evolve(fitnesses, codon, ou_model, nuc_matrix, alpha, time;
-        genetic_code = MolecularEvolution.universal_code, push_into = nothing)
-    codon_jumps = 0
-    fitness_jumps = 0
-    current_fits = copy(fitnesses)
-    current_codon = codon
-    t = 0.0
-    next_event = 0.0
-    while t+next_event < time
-        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, current_fits .+ ou_model.offsets, genetic_code=genetic_code)
-        sum_HBrow = sum(HBrow)
-        rOU,rHB = (ou_model.event_rate,sum_HBrow)
-        total_rate = rOU+rHB
-        next_event = randexp()/total_rate
-        t = t+next_event
-        if t < time
-            event_index = sample(1:2,Weights([rOU,rHB])) 
-            if event_index == 1 # Fitness jump event
-                fitness_jumps += 1
-                current_fits = ou_jump(current_fits, ou_model)
-            else # Codon substitution event
-                codon_jumps += 1
-                current_codon = sample(1:length(HBrow),Weights(HBrow))
-            end
-        end
-        if !isnothing(push_into)
-            push!(push_into,(t,current_codon,copy(current_fits)))
-        end
-    end
-    return current_fits, current_codon, codon_jumps, fitness_jumps
-end
-
-
-#=
-function piecewise_linear_plot!(t_vec, fs_vec, tmax; shift = NaN, kw...)
-    fs = zeros(length(fs_vec[1]), length(fs_vec)*3)
-    ts = zeros(length(fs_vec)*3)
-    push!(t_vec, tmax)
-    for i in 1:length(fs_vec)
-        fs[:, 3i-2:3i-1] .= fs_vec[i]
-        fs[:, 3i] .= fs_vec[i] .+ shift
-        ts[3i-2:3i] .= [t_vec[i], t_vec[i+1], t_vec[i+1]]
-    end
-    for i in 1:size(fs, 1)
-        plot!(ts, fs[i,:], label = :none; kw...)
-    end
-end
-
-#For investigating mixing rates:
-t = 1.0 #Try 1.0 and 20.0
-fs = zeros(20) .+ 5
-pl = plot(xlim = (0,t))
-rates = [0.2, 1.0, 5.0, 25.0]
-colors = ["red", "blue", "green", "purple"]
-coll = nothing
-for i in 1:4
-    for _ in 1:4
-        m = PiecewiseOUModel(1000.0/t, 1.0, rates[i])
-        coll = []
-        newfs, _, _, jumps = jumpy_HB_codon_evolve(fs, 1, m, CodonMolecularEvolution.demo_nucmat, 0.0, t, push_into = coll)
-        prepend!(coll, [(0.0, 1, fs)])
-        piecewise_linear_plot!([c[1] for c in coll], [c[3] for c in coll], t, color = colors[i], alpha = 0.1)
-    end
-    piecewise_linear_plot!([c[1] for c in coll], [c[3][1:1] for c in coll], t, color = colors[i], alpha = 0.7, shift = 0.0, label = "$(rates[i])")
-end
-pl
-
-#Confirming that the jump distribution compensates for increasing the event rate:
-t = 1.0
-fs = zeros(20) .+ 5
-pl = plot(xlim = (0,t))
-m = PiecewiseOUModel(1000.0, 1.0, 5.0)
-for i in 1:4
-    coll = []
-    newfs, _, _, jumps = jumpy_HB_codon_evolve(fs, 1, m, CodonMolecularEvolution.demo_nucmat, 0.0, t, push_into = coll)
-    prepend!(coll, [(0.0, 1, fs)])
-    piecewise_linear_plot!([c[1] for c in coll], [c[3] for c in coll], t, color = "red", alpha = 0.1)
-end
-m = PiecewiseOUModel(100.0, 1.0, 5.0)
-for i in 1:4
-    coll = []
-    newfs, _, _, jumps = jumpy_HB_codon_evolve(fs, 1, m, CodonMolecularEvolution.demo_nucmat, 0.0, t, push_into = coll)
-    prepend!(coll, [(0.0, 1, fs)])
-    piecewise_linear_plot!([c[1] for c in coll], [c[3] for c in coll], t, color = "blue", alpha = 0.1)
-end
-pl
-=#
-
-"""
-    ShiftingHBSimPartition(nuc_matrix::Matrix{Float64}, models::Vector{PiecewiseOUModel}; burnin_time = 100.0, code = MolecularEvolution.universal_code)
-
-Constructs a partition that tracks evolving fitnesses and codons. Only useable for sampling (not likelihood calculations).
-"""
-mutable struct ShiftingHBSimPartition <: Partition
-    sites::Int64
-    fitnesses::Matrix{Float64}
-    codons::Vector{Int64}
-    code::MolecularEvolution.GeneticCode
-    function ShiftingHBSimPartition(sites; code = MolecularEvolution.universal_code)
-        new(sites,zeros(length(code.amino_acids),sites),ones(Int64,sites),code)
-    end
-    function ShiftingHBSimPartition(nuc_matrix::Matrix{Float64}, models::Vector{PiecewiseOUModel}; burnin_time = 100.0, code = MolecularEvolution.universal_code)
-        fits = zeros(length(code.amino_acids),length(models))
-        for (i,m) in enumerate(models)
-            fits[:,i] .= randn(length(code.amino_acids)) .* m.eq_std .+ m.mu
-        end
-        codons = ones(Int64,length(models))
-        for (i,m) in enumerate(models)
-            f, c, _, _ = jumpy_HB_codon_evolve(fits[:,i], codons[i], m, nuc_matrix, 1.0, burnin_time, genetic_code = code)
-            fits[:,i] .= f
-            codons[i] = c
-        end
-        new(length(models), fits, codons)
-    end
-end
-
-"""
-    ShiftingHBSimModel(sites, alphas, ou_params, nuc_matrix)
-
-A model for simulating fitnesses evolving over phylogenies using the HB98 model. `sites` is the number of sites, `alphas` is a vector of synonymous rates (one per site),
-`ou_params` is a vector of `PiecewiseOUModel`s (one per site), and `nuc_matrix` is the symmetric nucleotide substitution matrix (shared across sites).
-"""
-mutable struct ShiftingHBSimModel <: MolecularEvolution.SimulationModel
-    sites::Int64
-    alphas::Vector{Float64}
-    ou_params::Vector{PiecewiseOUModel}
-    nuc_matrix::Matrix{Float64}
-end
-
-#Does nothing because the `forward!` function implicitly samples.
-function MolecularEvolution.sample_partition!(p::ShiftingHBSimPartition)
-end
-
-function MolecularEvolution.forward!(dest::ShiftingHBSimPartition,
-        source::ShiftingHBSimPartition,
-        model::ShiftingHBSimModel,
-        node::FelNode)
-    for site in 1:model.sites
-        fitnesses = source.fitnesses[:,site]
-        codon = source.codons[site]
-        ou_model = model.ou_params[site]
-        alpha = model.alphas[site]
-        fitnesses,codon,_,_ = jumpy_HB_codon_evolve(fitnesses,
-            codon,
-            ou_model,
-            model.nuc_matrix,
-            alpha,
-            node.branchlength)
-        dest.fitnesses[:,site] .= fitnesses
-        dest.codons[site] = codon
-    end
-end
-
-function partition2string(part::ShiftingHBSimPartition; code = MolecularEvolution.universal_code)
-    return join([code.sense_codons[part.codons[i]] for i in 1:part.sites])
-end
-
-"""
     HB98AA_matrix(alpha, nuc_matrix, AA_fitness; genetic_code = MolecularEvolution.universal_code)
 
 Returns the rate matrix for a codon model using the HB98 model where each AA has a different fitness. `alpha` is the synonymous rate, `nuc_matrix` is the symmetric nucleotide substitution matrix,
@@ -275,14 +61,214 @@ function HB98AA_matrix(alpha, nuc_matrix, AA_fitness; genetic_code = MolecularEv
     return codon_matrix
 end
 
+#Assumption: nuc matrix is symmetric
+function HB98_eqfreqs(fitnesses) #Result from HB98
+    v = exp.(fitnesses .- maximum(fitnesses))
+    return v ./ sum(v)
+end
+HB98AA_eqfreqs(AA_fitness; genetic_code = MolecularEvolution.universal_code) = HB98_eqfreqs(AA_fitness[genetic_code.codon2AA_pos])
+function HB98AA_expected_subs_per_site(nuc_matrix, AA_fitness; genetic_code = MolecularEvolution.universal_code)
+    eqfreqs = HB98AA_eqfreqs(AA_fitness, genetic_code = genetic_code)
+    Q = HB98AA_matrix(1.0, nuc_matrix, AA_fitness, genetic_code = genetic_code)
+    return expected_subs_per_site(Q, eqfreqs)
+end
+HB98AA_neutral_scale_nuc_matrix(nucm; genetic_code = MolecularEvolution.universal_code) = nucm ./= HB98AA_expected_subs_per_site(nucm, zeros(20), genetic_code = genetic_code)
+#/Assumption
+
+"""
+    PiecewiseOUModel(event_rate::Float64, eq_std::Float64, mixing::Float64; delta_t = 1.0)
+    PiecewiseOUModel(offsets::Vector{Float64})
+    PiecewiseOUModel(event_rate::Float64, eq_std::Float64, mixing::Float64, mu::Union{Float64,Vector{Float64}}, offsets::Union{Float64,Vector{Float64}}, codon_offsets::Union{Float64,Vector{Float64}})
+
+A piecewise constant approximation to an OU process, intended to simulate fitnesses evolving over phylogenies.
+The equilibrium standard deviation is directly parameterized (`eq_std`), as is the rate at which the process mixes to equilibrium (`mixing`).
+`event_rate` controls how often the fitness changes occur, where the mixing rate is scaled to compensate for the increased rate of change to achieve
+approximately the same amount of change per unit time even as the `event_rate` changes. A very high `event_rate` will behave more like continuous diffusion,
+but will be more computationally expensive to sample from. `mu` can also be set to control the mean fitnesses.
+The model also permits `offsets`, which are added to the fitnesses as they are passed into the model. For a single process, these are confounded with the mean `mu`
+but if the offsets change (eg. from one branch to another) the effective fitnesses will immidiately change, whereas if `mu` changes the fitnesses will drift towards `mu`.
+"""
+mutable struct PiecewiseOUModel{M<:Union{Float64,AbstractVector{Float64}},O<:Union{Float64,AbstractVector{Float64}},C<:Union{Float64,AbstractVector{Float64}}} 
+    mu::M #OU mean. Scalar (in which case it is the same for all AAs) or vector (one per AA)
+    delta_t::Float64 #Scales the size of the fitness jumps
+    var::Float64 #OU instantaneous diffusion variance
+    reversion_rate::Float64 #Rate of reversion to the mean
+    event_rate::Float64 #Rate of fitness jumps
+    offsets::O #These do not change, thus allowing preferred codons. Incorporated right at the end.
+    eq_std::Float64 #Standard deviation of the equilibrium distribution
+    codon_offsets::C #These do not change, thus allowing preferred codons.
+    function PiecewiseOUModel(event_rate::Float64, eq_std::Float64, mixing::Float64; delta_t = 1.0)
+        new{Float64,Float64,Float64}(0.0, delta_t, 2*(mixing/event_rate)*(eq_std^2), mixing/event_rate, event_rate, 0.0, eq_std, 0.0)
+    end
+    #Need to test this constructor:
+    function PiecewiseOUModel(event_rate::Float64, eq_std::Float64, mixing::Float64, mu::M, offsets::O, codon_offsets::C) where {M,O,C}
+        new{M,O,C}(mu, 1.0, 2*(mixing/event_rate)*(eq_std^2), mixing/event_rate, event_rate, offsets, eq_std, codon_offsets)
+    end
+    function PiecewiseOUModel(offsets::Vector{Float64}) #Constructor for static model, using just offsets for fitnesses
+        new{Float64,Vector{Float64}, Float64}(0.0, 1.0, 1e-15, 1.0, 0.0, offsets, 1e-15, 0.0)
+    end
+end
+
+"""
+    jump(x_source, m::PiecewiseOUModel)
+
+Evolves values over time using a piecewise constant approximation to an OU process, where this function computes the new distribution for a single discrete jump.
+`x_source` is the vector of fitnesses, and m is the PiecewiseOUModel.
+
+"""
+function jump(x_source, x_rand, m::PiecewiseOUModel)
+    a = (m.reversion_rate * m.delta_t)
+    return x_rand .* (m.eq_std * sqrt(1 - exp(-2*a))) .+ m.mu .+ ((x_source .- m.mu) .* exp(-a))
+end
+jump(x_source::Float64, m::PiecewiseOUModel) = jump(x_source, randn(), m)
+jump(x_source::Vector{Float64}, m::PiecewiseOUModel) = jump(x_source, randn(length(x_source)), m)
+
 #=
+m = PiecewiseOUModel(100.0, 10.0, 10.0)
+CodonMolecularEvolution.jump(zeros(20), m)
+=#
+
+"""
+    HB98AA_row(current_codon, alpha, nuc_matrix, AA_fitness; genetic_code=MolecularEvolution.universal_code)
+
+Returns the rate row for a codon model using the HB98 model where each AA has a different fitness. `current_codon` is the current codon, `alpha` is the synonymous rate,
+`nuc_matrix` is the symmetric nucleotide substitution matrix, and `AA_fitness` is the fitness of each amino acid.
+"""
+function HB98_row(current_codon, alpha, nuc_matrix, fitness; genetic_code=MolecularEvolution.universal_code)
+    row = zeros(genetic_code.num_sense)
+    codon_aa_i = fitness[current_codon]
+    for j in 1:genetic_code.num_sense
+        if genetic_code.codon_to_nuc_map[current_codon,j] != (-1,-1,-1)
+            c2n_map = genetic_code.codon_to_nuc_map[current_codon,j]
+            f_ab = HB_fixation_rate(codon_aa_i,fitness[j])
+            row[j] = alpha * nuc_matrix[c2n_map[2],c2n_map[3]] * f_ab
+        end
+    end
+    return row
+end
+
+HB98AA_row(current_codon, alpha, nuc_matrix, AA_fitness, codon_fitness_offsets; genetic_code=MolecularEvolution.universal_code) = HB98_row(current_codon, alpha, nuc_matrix, AA_fitness[genetic_code.codon2AA_pos] .+ codon_fitness_offsets, genetic_code = genetic_code)
+
+#= Check the row matches the matrix:
 fs = randn(20)
 c = rand(1:61)
-r1 = HB98AA_row(c, 1.23, CodonMolecularEvolution.demo_nucmat, fs)
-q1 = HB98AA_matrix(1.23, CodonMolecularEvolution.demo_nucmat, fs)
+r1 = CodonMolecularEvolution.HB98AA_row(c, 1.23, CodonMolecularEvolution.demo_nucmat, fs, 0.0)
+q1 = CodonMolecularEvolution.HB98AA_matrix(1.23, CodonMolecularEvolution.demo_nucmat, fs)
 q1[c,c] = 0
 @assert isapprox(sum(q1[c,:] .- r1), 0.0)
 =#
+
+"""
+    jumpy_HB_codon_evolve(fitnesses, codon, ou_model, nuc_matrix, alpha, time;
+        genetic_code = MolecularEvolution.universal_code, push_into = nothing)
+
+Evolves fitnesses and codons over time using the HB98 model. `fitnesses` is the vector of fitnesses, `codon` is the current codon, `ou_model` is the OU model,
+`nuc_matrix` is the symmetric nucleotide substitution matrix, `alpha` is the synonymous rate, and `time` is the total time to evolve over.
+"""
+function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matrix, alpha, time;
+        genetic_code = MolecularEvolution.universal_code, push_into = nothing)
+    codon_jumps = 0
+    fitness_jumps = 0
+    current_fits = copy(fitnesses)
+    current_codon = codon
+    t = 0.0
+    next_event = 0.0
+    while t+next_event < time
+        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, current_fits .+ scaled_fitness_model.offsets, scaled_fitness_model.codon_offsets, genetic_code=genetic_code)
+        sum_HBrow = sum(HBrow)
+        rOU,rHB = (scaled_fitness_model.event_rate,sum_HBrow)
+        total_rate = rOU+rHB
+        next_event = randexp()/total_rate
+        t = t+next_event
+        if t < time
+            event_index = sample(1:2,Weights([rOU,rHB])) 
+            if event_index == 1 # Fitness jump event
+                fitness_jumps += 1
+                current_fits = jump(current_fits, scaled_fitness_model)
+            else # Codon substitution event
+                codon_jumps += 1
+                current_codon = sample(1:length(HBrow),Weights(HBrow))
+            end
+        end
+        if !isnothing(push_into)
+            push!(push_into,(t,current_codon,copy(current_fits)))
+        end
+    end
+    return current_fits, current_codon, codon_jumps, fitness_jumps
+end
+
+
+"""
+    ShiftingHBSimModel(sites, alphas, ou_params, nuc_matrix; rescale = true)
+
+A model for simulating fitnesses evolving over phylogenies using the HB98 model. `sites` is the number of sites, `alphas` is a vector of synonymous rates (one per site),
+`ou_params` is a vector of `PiecewiseOUModel`s (one per site), and `nuc_matrix` is the symmetric nucleotide substitution matrix (shared across sites).
+If 'rescale' is true, then the nuc matrix is scaled so that, when `alpha=1` and the fitnesses`=0`, the HB model expects one substitution per site per unit time.
+"""
+mutable struct ShiftingHBSimModel <: MolecularEvolution.SimulationModel
+    sites::Int64
+    alphas::Vector{Float64}
+    ou_params::Vector{PiecewiseOUModel}
+    nuc_matrix::Matrix{Float64}
+    code::MolecularEvolution.GeneticCode
+    function ShiftingHBSimModel(s,a,oup,n; rescale = true, code = MolecularEvolution.universal_code)
+        new(s,a,oup,rescale ? HB98AA_neutral_scale_nuc_matrix(n, genetic_code = code) : n, code)
+    end
+end
+
+ShiftingHBSimModel(nuc_matrix::Matrix{Float64}, ou_params::Vector{PiecewiseOUModel{A,B,C}}; alpha = ones(length(ou_params)), rescale = true, code = MolecularEvolution.universal_code) where {A,B,C} = ShiftingHBSimModel(length(ou_params), alpha, ou_params, nuc_matrix, rescale = rescale, code = code)
+
+
+"""
+    ShiftingHBSimPartition(model::ShiftingHBSimModel; burnin_time = 100.0, code = MolecularEvolution.universal_code)
+
+Constructs a partition that tracks evolving fitnesses and codons. Only useable for sampling (not likelihood calculations).
+"""
+mutable struct ShiftingHBSimPartition <: CodonSimulationPartition
+    sites::Int64
+    fitnesses::Matrix{Float64}
+    codons::Vector{Int64}
+    code::MolecularEvolution.GeneticCode
+    function ShiftingHBSimPartition(sites; code = MolecularEvolution.universal_code)
+        new(sites,zeros(length(code.amino_acids),sites),ones(Int64,sites), code)
+    end
+    function ShiftingHBSimPartition(model::ShiftingHBSimModel; burnin_time = 100.0)
+        fits = zeros(length(model.code.amino_acids),length(model.ou_params))
+        for (i,m) in enumerate(model.ou_params)
+            fits[:,i] .= randn(length(model.code.amino_acids)) .* m.eq_std .+ m.mu
+        end
+        #Starting codons ignore codon_offsets. Should be ok because burn-in, but should adjust.
+        codons = [sample(1:61, Weights(HB98AA_eqfreqs(fits[:,i] .+ m.codon_offsets))) for i in 1:length(model.ou_params)]
+        for (i,m) in enumerate(model.ou_params)
+            f, c, _, _ = jumpy_HB_codon_evolve(fits[:,i], codons[i], m, model.nuc_matrix, model.alphas[i], burnin_time, genetic_code = model.code)
+            fits[:,i] .= f
+            codons[i] = c
+        end
+        new(length(model.ou_params), fits, codons, model.code)
+    end
+end
+
+
+function MolecularEvolution.forward!(dest::ShiftingHBSimPartition,
+        source::ShiftingHBSimPartition,
+        model::ShiftingHBSimModel,
+        node::FelNode)
+    for site in 1:model.sites
+        fitnesses = source.fitnesses[:,site]
+        codon = source.codons[site]
+        ou_model = model.ou_params[site]
+        alpha = model.alphas[site]
+        fitnesses,codon,_,_ = jumpy_HB_codon_evolve(fitnesses,
+            codon,
+            ou_model,
+            model.nuc_matrix,
+            alpha,
+            node.branchlength,
+            genetic_code = model.code)
+        dest.fitnesses[:,site] .= fitnesses
+        dest.codons[site] = codon
+    end
+end
 
 """
     dNdS(q1, q0, p; code = MolecularEvolution.universal_code)
@@ -300,7 +286,7 @@ q0 = HB98AA_matrix(1.0, nucm, zeros(20))
 dNdS(q1, q0)
 ```
 """
-function dNdS(q1, q0, p; code = d_code)
+function dNdS(q1, q0, p::Vector{Float64}; code = d_code)
     nsi = [CartesianIndex(i[1][1], i[1][2]) for i in code.nonsyn_positions]
     si = [CartesianIndex(i[1][1], i[1][2]) for i in code.syn_positions]
     dN_numerator = sum((q1 .* p)[nsi])
@@ -323,13 +309,13 @@ Returns the expected dN/dS ratio for a Halpern and Bruno model with a vector of 
 function HBdNdS(fs::Vector{Float64}; code = d_code, nucm = CodonMolecularEvolution.demo_nucmat) 
     q1 = HB98AA_matrix(1.0, nucm, fs, genetic_code = code)
     q0 = HB98AA_matrix(1.0, nucm, zeros(20), genetic_code = code)
-    dNdS(q1, q0, exp(q1 * 100)[1,:], code = code)
+    return dNdS(q1, q0, HB98AA_eqfreqs(fs, code = code), code = code)
 end
 
 HBdNdS(fs_pre::Vector{Float64}, fs_post::Vector{Float64}; code = d_code, nucm = CodonMolecularEvolution.demo_nucmat) = dNdS(HB98AA_matrix(1.0, nucm, fs_post, genetic_code = code), HB98AA_matrix(1.0, nucm, zeros(20), genetic_code = code), exp(HB98AA_matrix(1.0, nucm, fs_pre, genetic_code = code) * 100)[1,:], code = code)
 
 """
-    approx_std2maxdNdS(σ)
+    std2maxdNdS(σ)
 
 Approximation for the maximum dN/dS ratio as a function of the standard deviation of the fitnesses, assuming Gaussian fitnesses and a Halpern and Bruno model,
 where the fitnesses have just shifted from one Gaussian sample to another. Note: this is not an analytical solution, but a serindipitously good approximation.
@@ -346,20 +332,18 @@ function monte_carlo_maxdNdS(σ; N=100_000)
 end
 vs = 0:0.01:10
 plot(vs, monte_carlo_maxdNdS.(vs), label = "Monte Carlo", alpha = 0.8)
-plot!(vs, approx_std2maxdNdS.(vs), label = "Approx", linestyle = :dash, alpha = 0.8)
+plot!(vs, std2maxdNdS.(vs), label = "Approx", linestyle = :dash, alpha = 0.8)
 ```
 """
-approx_std2maxdNdS(σ) = sqrt(σ^2 + π) / sqrt(π)
+std2maxdNdS(σ) = sqrt(σ^2 + π) / sqrt(π)
 
 """
-    approx_maxdNdS2std(ω)
+    maxdNdS2std(ω)
 
-Inverse of approx_std2maxdNdS(σ). Estimates the standard deviation of the fitnesses that will produce, in expectation, a dN/dS ratio of `ω`, assuming Gaussian fitnesses and a Halpern and Bruno model,
+Inverse of std2maxdNdS(σ). Estimates the standard deviation of the fitnesses that will produce, in expectation, a dN/dS ratio of `ω`, assuming Gaussian fitnesses and a Halpern and Bruno model,
 where the fitnesses have just shifted from one Gaussian sample to another. Note: this is not an analytical solution, but a serindipitously good approximation.
 """
-approx_maxdNdS2std(ω) = sqrt(π * (ω^2 - 1))
-
-
+maxdNdS2std(ω) = sqrt(π * (ω^2 - 1))
 
 """
     time_varying_HB_freqs(ts, T, fst, init_freqs; nucm = CodonMolecularEvolution.demo_nucmat, alpha = 1.0, delta_t = 0.002, prezero_delta_t = 0.5)
@@ -474,7 +458,7 @@ function HBviz(ts::Vector{Float64}, fst::Vector{Vector{Float64}}, T::Float64, al
         label = :none, top_margin = -12Plots.mm, color = "black")
     plot!([0,T], [1,1], color = "black", linestyle = :dash, alpha = 0.5, label = :none)
     if !isnothing(σ)
-        maxdnds = approx_std2maxdNdS(σ)
+        maxdnds = std2maxdNdS(σ)
         plot!([0,T], [maxdnds,maxdnds], color = "red", linestyle = :dash, alpha = 0.5, label = :none)
     end
     return plot(pl1, pl2, pl3, layout=(3, 1), link=:x, margins = 8Plots.mm, plot_layout = :tight, widen=false, tickdirection=:out)
@@ -502,9 +486,219 @@ function shiftingHBviz(T, event_rate, σ, mixing_rate, alpha, nucm; T0 = -20)
     fs = randn(20) .* σ
     m = PiecewiseOUModel(event_rate, σ, mixing_rate)
     coll = []
-    newfs, _, _, jumps = jumpy_HB_codon_evolve(fs, 1, m, nucm, alpha, T-T0, push_into = coll)
-    prepend!(coll, [(0.0, 1, fs)])
+    codon = sample(1:61, Weights(HB98AA_eqfreqs(fs)))
+    newfs, _, _, jumps = jumpy_HB_codon_evolve(fs, codon, m, nucm, alpha, T-T0, push_into = coll)
+    prepend!(coll, [(0.0, codon, fs)])
     ts = [c[1] for c in coll] .+ T0
     fst = [c[3] for c in coll]
     return HBviz(ts, fst, T, alpha, nucm, σ = σ)
 end
+
+
+
+###############################################################################
+#A model for evolving log effective pop size & unscaled site fitnesses
+###############################################################################
+
+# jumpy_NeHB_codon_evolve is currently fine for a single site. However, to get this version working over a
+#branch for multiple sites, we need to:
+# 1) First sample the Ne jumps over the branch (since these apply for all sites)
+# 2) One site at a time, sample the fitness jumps and codon substitutions between each Ne jump event
+# ShiftingNeHBSimModel and ShiftingNeHBSimPartition are commented out until this works.
+"""
+    jumpy_NeHB_codon_evolve(fitnesses, logNe, codon, fitness_model, logNe_model, nuc_matrix, alpha, time;
+    genetic_code = MolecularEvolution.universal_code, push_into = nothing)
+
+Evolves codons, unscaled site-fitness, and log-pop-size together.
+"""
+function jumpy_NeHB_codon_evolve(fitnesses, logNe, codon, fitness_model, logNe_model, nuc_matrix, alpha, time;
+    genetic_code = MolecularEvolution.universal_code, push_into = nothing)
+    codon_jumps = 0
+    fitness_jumps = 0
+    logNe_jumps = 0
+    current_fits = copy(fitnesses)
+    current_codon = codon
+    current_logNe = logNe
+    t = 0.0
+    next_event = 0.0
+    while t+next_event < time
+        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, (current_fits .+ fitness_model.offsets) .* exp(current_logNe) .* 2, fitness_model.codon_offsets .* exp(current_logNe) .* 2, genetic_code=genetic_code)
+        sum_HBrow = sum(HBrow)
+        rOU, rNe, rHB = (fitness_model.event_rate, logNe_model.event_rate, sum_HBrow)
+        total_rate = rOU+rHB+rNe
+        next_event = randexp()/total_rate
+        t = t+next_event
+        if t < time
+            event_index = sample(1:3,Weights([rOU,rNe,rHB])) 
+            if event_index == 1 # Fitness jump event
+                fitness_jumps += 1
+                current_fits = jump(current_fits, fitness_model)
+            elseif event_index == 2 # pop-size jump event
+                logNe_jumps += 1
+                current_logNe = jump(current_logNe, logNe_model)
+            else # Codon substitution event
+                codon_jumps += 1
+                current_codon = sample(1:length(HBrow),Weights(HBrow))
+            end
+        end
+        if !isnothing(push_into)
+            push!(push_into,(t,current_codon,copy(current_fits),current_logNe))
+        end
+    end
+    return current_logNe, current_fits, current_codon, codon_jumps, fitness_jumps, logNe_jumps
+end
+
+"""
+    shiftingNeHBviz(T, f_event_rate, f_σ, f_mixing_rate, logNe_event_rate, logNe_σ, logNe_mean, logNe_mixing_rate, alpha, nucm; T0 = -20)
+
+Visualize the fitness trajectory, codon frequencies, and expected dN/dS over time for a shifting Ne HB process.
+"""
+function shiftingNeHBviz(T, f_event_rate, f_σ, f_mixing_rate, logNe_event_rate, logNe_σ, logNe_mean, logNe_mixing_rate, alpha, nucm; T0 = -20)
+    fs = randn(20) .* f_σ
+    logNe = randn() .* logNe_σ .+ logNe_mean
+    f_ou = PiecewiseOUModel(f_event_rate, f_σ, f_mixing_rate)
+    log_ne_ou = PiecewiseOUModel(logNe_event_rate, logNe_σ, logNe_mixing_rate, logNe_mean, 0.0, 0.0)
+    coll = []
+    codon = sample(1:61, Weights(HB98AA_eqfreqs(fs .* exp(logNe) .* 2)))
+    CodonMolecularEvolution.jumpy_NeHB_codon_evolve(fs, logNe, codon, f_ou, log_ne_ou, nucm, alpha,  T-T0, push_into = coll)
+    prepend!(coll, [(0.0, codon, fs, logNe)])
+    ts = [c[1] for c in coll] .+ T0
+    fst = [c[3] .* exp(c[4]) .* 2 for c in coll] #2Ne*s
+    return HBviz(ts, fst, T, alpha, nucm)
+end
+
+#=
+
+mutable struct ShiftingNeHBSimModel <: MolecularEvolution.SimulationModel
+    sites::Int64
+    alphas::Vector{Float64}                # per-site synonymous rates
+    unscaled_ou_params::Vector{PiecewiseOUModel}  # OU process for each site's unscaled fitness
+    logNe_model::PiecewiseOUModel       # OU process for log(pop size)
+    nuc_matrix::Matrix{Float64}
+    code::MolecularEvolution.GeneticCode
+end
+
+"""
+    ShiftingNeHBSimModel(nuc_matrix, unscaled_ou_params, logNe_model; alpha, rescale, code)
+
+Create a model with one OU process per site (unscaled_ou_params) and one OU process for log(N_e). 
+`alpha` can be a scalar or a vector of the same length as unscaled_ou_params.
+If `rescale` is true, the nuc_matrix is scaled (HB98 neutral scaling).
+"""
+function ShiftingNeHBSimModel(
+    nuc_matrix::Matrix{Float64}, 
+    unscaled_ou_params::Vector{PiecewiseOUModel{A,B,C}}, 
+    logNe_model::PiecewiseOUModel;
+    alpha = ones(length(unscaled_ou_params)),
+    rescale::Bool = true,
+    code::MolecularEvolution.GeneticCode = MolecularEvolution.universal_code) where {A,B,C}
+    sites = length(unscaled_ou_params)
+    @assert length(alpha) == sites || length(alpha) == 1 "alpha must match number of sites or be a single value"
+
+    # Copy or scale the nuc matrix if requested
+    mat = rescale ? HB98AA_neutral_scale_nuc_matrix(copy(nuc_matrix), genetic_code = code) : copy(nuc_matrix)
+
+    return ShiftingNeHBSimModel(
+        sites,
+        length(alpha) == 1 ? fill(alpha[1], sites) : alpha,
+        unscaled_ou_params,
+        logNe_model,
+        mat,
+        code
+    )
+end
+
+mutable struct ShiftingNeHBSimPartition <: CodonSimulationPartition
+    sites::Int64
+    logNe::Float64
+    fitnesses::Matrix{Float64}  # size: (number_of_AAs, sites)
+    codons::Vector{Int64}
+    code::MolecularEvolution.GeneticCode
+end
+
+"""
+    ShiftingNeHBSimPartition(model; burnin_time)
+
+Constructs a partition for the `ShiftingNeHBSimModel`.
+Initializes by:
+  - Drawing random unscaled fitnesses from each site's OU equilibrium.
+  - Drawing random logNe from its OU equilibrium.
+  - "Burning in" each site along the branch of length `burnin_time`.
+"""
+function ShiftingNeHBSimPartition(
+    model::ShiftingNeHBSimModel; 
+    burnin_time::Float64 = 100.0
+)
+    # 1) sample an initial logNe from equilibrium
+    # The equilibrium of an OU in this piecewise-constant approximation is roughly Normal(mean=mu, sd=eq_std).
+    lp = randn() * model.logNe_model.eq_std + model.logNe_model.mu
+
+    # 2) sample initial unscaled fitness for each site
+    nAAs = length(model.code.amino_acids)
+    fits = zeros(nAAs, model.sites)
+    for s in 1:model.sites
+        oup = model.unscaled_ou_params[s]
+        fits[:,s] .= randn(nAAs) .* oup.eq_std .+ oup.mu
+    end
+
+    # 3) pick initial codons (arbitrary, say the first sense codon)
+    c_init = [rand(1:length(model.code.sense_codons)) for i in 1:model.sites]
+
+    # 4) "burn in" by evolving over burnin_time
+    #jumpy_NeHB_codon_evolve(fitnesses, logNe, codon, fitness_model, logNe_model, nuc_matrix, alpha, time
+    new_logNe, new_fits, new_codons, _, _, _ = jumpy_NeHB_codon_evolve(
+        fits, lp, c_init, model.unscaled_ou_params, model.logNe_model, model.nuc_matrix, model.alphas, burnin_time, genetic_code = model.code)
+
+    return ShiftingNeHBSimPartition(
+        model.sites,
+        new_logNe,
+        new_fits,
+        new_codons,
+        model.code
+    )
+end
+
+# Minimal constructor for placeholders (if one needs a zero-time partition, for instance)
+function ShiftingNeHBSimPartition(
+    sites::Int; 
+    code::MolecularEvolution.GeneticCode = MolecularEvolution.universal_code
+)
+    nAAs = length(code.amino_acids)
+    return ShiftingNeHBSimPartition(
+        sites,
+        0.0, 
+        zeros(nAAs, sites),
+        ones(Int, sites),
+        code
+    )
+end
+
+"""
+    forward!(dest, source, model, node)
+
+Evolves `source` partition along `node.branchlength` under `model`, storing the result in `dest`.
+"""
+function MolecularEvolution.forward!(
+    dest::ShiftingNeHBSimPartition,
+    source::ShiftingNeHBSimPartition,
+    model::ShiftingNeHBSimModel,
+    node::FelNode
+)
+    bl = node.branchlength
+    new_lp, new_fits, new_codons, _, _, _ = jumpy_NeHB_codon_evolve(
+        copy(source.fitnesses),
+        source.logNe,
+        copy(source.codons),
+        model.unscaled_ou_params,
+        model.logNe_model,
+        model.nuc_matrix,
+        model.alphas,
+        bl;
+        genetic_code = model.code
+    )
+
+    dest.logNe = new_lp
+    dest.fitnesses .= new_fits
+    dest.codons .= new_codons
+end
+=#
