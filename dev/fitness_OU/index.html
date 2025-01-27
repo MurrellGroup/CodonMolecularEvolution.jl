@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Simulating with time-varying fitness · CodonMolecularEvolution.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link rel="canonical" href="https://MurrellGroup.github.io/CodonMolecularEvolution.jl/fitness_OU/"/><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="CodonMolecularEvolution.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">CodonMolecularEvolution.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../difFUBAR/">difFUBAR</a></li><li><a class="tocitem" href="../shared/">Shared tools</a></li><li><a class="tocitem" href="../dataprep/">Data preparation</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Simulating with time-varying fitness</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Simulating with time-varying fitness</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/MurrellGroup/CodonMolecularEvolution.jl/blob/main/docs/src/fitness_OU.md#" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Simulating-with-time-varying-fitness"><a class="docs-heading-anchor" href="#Simulating-with-time-varying-fitness">Simulating with time-varying fitness</a><a id="Simulating-with-time-varying-fitness-1"></a><a class="docs-heading-anchor-permalink" href="#Simulating-with-time-varying-fitness" title="Permalink"></a></h1><p>Uses <a href="simtree_tagged.svg">this tree</a> as input.</p><pre><code class="language-julia hljs">#Read in a tree where the Newick string has tags (eg. &quot;{G1}&quot; or &quot;{G2}&quot;) on branches.
+#Can be tagged with: https://murrellgroup.github.io/WebWidgets/phylotagger.html
+ts, tags = import_labeled_phylotree_newick(&quot;simtree_tagged.tre&quot;)
+tree = gettreefromnewick(ts, FelNode)
+
+#First viz at the tree with tags
+for (i,n) in enumerate(getnodelist(tree))
+    (length(n.children) &gt; 0) &amp;&amp; (n.name = &quot;N$(i)_&quot;*n.name) #Make internal node names unique (only needed for plotting)
+    n.node_data = Dict(&quot;g&quot; =&gt; (occursin(tags[2], n.name) ? 1.0 : 0.0))
+end
+pl = plot(get_phylo_tree(tree), showtips = false, marker_z = &quot;g&quot;, line_z = &quot;g&quot;, markerstrokewidth = 0, colorbar = false, linecolor = :darkrainbow, markercolor = :darkrainbow)
+savefig(&quot;tagged_simtree_phylo.svg&quot;)</code></pre><p><img src="../figures/tagged_simtree_phylo.svg" alt/></p><pre><code class="language-julia hljs">#500 codon sites in total, where 100 will undergo a fitness shift:
+S, nsel = 500, 100
+selsites = sort(sample(1:S, nsel, replace = false))
+nucm = CodonMolecularEvolution.demo_nucmat #Using a nuc matrix derived from a flu dataset
+
+#Compute std dev of fitnesses for the target peak dN/dS, aiming for a mean dN/dS of 2.0 at the fitness shift boundary:
+σ = maxdNdS2std(2.0)
+m0fs = randn(20,S) .* σ
+m1fs = copy(m0fs)
+m1fs[:,selsites] .= randn(20,nsel) .* σ
+
+#Plot analytical expectations for background dN/dS, and for peak dN/dS at the host change boundary.
+scatter([HBdNdS(m0fs[:,i], nucm = nucm) for i in 1:S], size = (1200,500), yscale = :log10, label = &quot;HBω0&quot;, msw = 0, color = &quot;blue&quot;, xlabel = &quot;Site&quot;, ylabel = &quot;dN/dS&quot;, margins = 1Plots.cm)
+scatter!(selsites, [HBdNdS(m0fs[:,i], m1fs[:,i], nucm = nucm) for i in selsites], size = (1200,500), label = &quot;HBω1&quot;, msw = 0, color = &quot;red&quot;)
+savefig(&quot;dnds_plot.svg&quot;)</code></pre><p><img src="../figures/dnds_plot.svg" alt/></p><pre><code class="language-julia hljs">#Specify two models, m1 and m2, sharing alpha but with different fitnesses for the `selsites` sites:
+using Distributions
+
+alphas = rand(Gamma(10,0.1), S)
+m1 = ShiftingHBSimModel(S, alphas, [PiecewiseOUModel(m0fs[:,i]) for i in 1:S], nucm)
+m2 = ShiftingHBSimModel(S, alphas, [PiecewiseOUModel(m1fs[:,i]) for i in 1:S], nucm)
+
+#Use model m1 when &quot;{G1}&quot; occurs in the sequence name. Models are in [] because we have an array of models per partition, when passing a function:
+mfunc(n) = occursin(&quot;{G2}&quot;, n.name) ? [m2] : [m1]
+
+#The process should be at equilibrium for whatever the root model is, and this will use the root model:
+internal_message_init!(tree, ShiftingHBSimPartition(m1))
+
+#Simeulate under this process:
+sample_down!(tree, mfunc)
+
+#Write sequences to a .fasta file:
+write_fasta(&quot;simu_seqs.fasta&quot;, leaf_samples(tree), seq_names = leaf_names(tree))</code></pre></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Monday 27 January 2025 00:25">Monday 27 January 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
