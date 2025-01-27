@@ -183,6 +183,7 @@ function alternating_maximize(f, a_bounds, b_bounds; final_tol = 1e-20, max_iter
     return a,b,-m
 end
 
+#Generalize this to work with any grid dimensions!
 function interpolating_LRS(grid)
     itp = interpolate(grid, BSpline(Cubic(Line(OnGrid()))))
     
@@ -207,7 +208,7 @@ end
     z = @. itp(x', y)
     contour(x, y, z, levels=30, color=:turbo, fill=true, linewidth = 0, colorbar = false, size = (400,400))
 =#
-function fifeFUBAR(f::FUBARgrid, outpath; verbosity=1, exports=true)
+function FIFE(f::FUBARgrid, outpath; verbosity=1, exports=true)
     exports && init_path(outpath)
     LLmatrix = reshape(f.LL_matrix, length(f.grid_values),length(f.grid_values),:) 
     #Note: dim1 = beta, dim2 = alpha, so we transpose going in:
@@ -221,4 +222,4 @@ function fifeFUBAR(f::FUBARgrid, outpath; verbosity=1, exports=true)
     return df_results
 end
 
-export fifeFUBAR
+export FIFE

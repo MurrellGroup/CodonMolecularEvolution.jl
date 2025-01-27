@@ -1,6 +1,6 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, Measures, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo
+using FASTX, MolecularEvolution, Measures, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo, LaTeXStrings, Random
 using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, Interpolations, MCMCChains
 
 abstract type difFUBARGrid end
@@ -14,6 +14,7 @@ include("FUBAR/FUBAR.jl")
 include("smoothFUBAR/smoothFUBAR.jl")
 
 include("simulations/alphabeta/alphabeta.jl")
+include("simulations/ou_hb.jl")
 
 export 
     difFUBARBaseline,
@@ -21,6 +22,15 @@ export
     difFUBARTreesurgery,
     difFUBARTreesurgeryAndParallel,
     FUBAR,
-    smoothFUBAR
-
+    smoothFUBAR,
+    dNdS,
+    HBdNdS,
+    std2maxdNdS,
+    maxdNdS2std,
+    HB98AA_matrix,
+    ShiftingHBSimModel,
+    ShiftingHBSimPartition,
+    PiecewiseOUModel,
+    shiftingHBviz,
+    HBviz
 end
