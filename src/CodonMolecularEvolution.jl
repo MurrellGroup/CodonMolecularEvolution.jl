@@ -2,7 +2,7 @@ module CodonMolecularEvolution
 
 using FASTX, MolecularEvolution, Measures, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo, LaTeXStrings, Random
 using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, Interpolations, MCMCChains
-
+using ReversibleSlices
 abstract type difFUBARGrid end
 
 include("shared/shared.jl")
@@ -15,6 +15,8 @@ include("smoothFUBAR/smoothFUBAR.jl")
 
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
+
+include("smoothFUBAR/gpFUBAR.jl")
 
 export 
     difFUBARBaseline,
@@ -32,5 +34,7 @@ export
     ShiftingHBSimPartition,
     PiecewiseOUModel,
     shiftingHBviz,
-    HBviz
+    HBviz,
+    generate_RJGP_model,
+    reversible_slice_sampling
 end
