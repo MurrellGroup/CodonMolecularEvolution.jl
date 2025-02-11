@@ -6,30 +6,34 @@ struct RJGPModel
     invp::Vector{Int64}
 end
 
-function invert_upper_then_lower(N::Int)
-    # Construct the same permutation p used to go from row-major to [upper, lower]
-    upper = Int[]
+function create_rjess_permutation(N::Int)
+    # First collect indices for lower triangular + diagonal (column by column)
     lower = Int[]
-    for i in 1:N
-        for j in 1:N
-            idx = (i-1)*N + j
-            if i < j
-                push!(upper, idx)
-            else
-                push!(lower, idx)
-            end
+    for j in 1:N
+        for i in j:N
+            idx = (j-1)*N + i
+            push!(lower, idx)
         end
     end
+    
+    # Then collect indices for upper triangular (column by column)
+    upper = Int[]
+    for j in 1:N
+        for i in 1:(j-1)
+            idx = (j-1)*N + i
+            push!(upper, idx)
+        end
+    end
+    
+    # Combine to get permutation
     p = vcat(lower, upper)
-
-    # Compute inverse permutation invp so that v[p] == v_in_new_order
-    # => v_in_new_order[invp] == v
+    
+    # Compute inverse permutation
     invp = similar(p)
     for i in eachindex(p)
         invp[p[i]] = i
     end
-
-    # Apply inverse permutation to the input vector v
+    
     return invp
 end
 
@@ -41,11 +45,35 @@ end
 
 function rearrange_kernel_matrix(Σ)
     N = Int64(sqrt(size(Σ)[1]))
+    result = zeros(N*N, N*N)
     
-    # Convert from FUBAR's column-major to row-major
-    ordering = [(j-1)*N + i for i in 1:N for j in 1:N]
+    # Create mapping from FUBAR format to RJESS format
+    rjess_to_fubar = Int[]
     
-    return Σ[ordering, ordering]
+    # First get indices for lower triangular + diagonal elements in FUBAR format
+    for j in 1:N
+        for i in j:N
+            idx = (j-1)*N + i  # FUBAR column-major index
+            push!(rjess_to_fubar, idx)
+        end
+    end
+    
+    # Then get indices for upper triangular elements in FUBAR format
+    for j in 1:N
+        for i in 1:(j-1)
+            idx = (j-1)*N + i  # FUBAR column-major index
+            push!(rjess_to_fubar, idx)
+        end
+    end
+    
+    # Rearrange covariance matrix according to this mapping
+    for i in 1:length(rjess_to_fubar)
+        for j in 1:length(rjess_to_fubar)
+            result[i,j] = Σ[rjess_to_fubar[i], rjess_to_fubar[j]]
+        end
+    end
+    
+    return result
 end
 function gaussian_kernel_matrix(grid; kernel_scaling=1.0)
     return kernel_matrix(grid, distance_function=x -> exp(-x / (2 * kernel_scaling^2)))
@@ -67,7 +95,7 @@ end
 function generate_RJGP_model(grid::FUBARgrid; kernel_scaling = 1.0, purifying_prior = 1/2)
     Σ = rearrange_kernel_matrix(gaussian_kernel_matrix(grid, kernel_scaling = kernel_scaling))
     dimension = size(Σ)[1]
-    return RJGPModel(grid, Σ, dimension, purifying_prior, invert_upper_then_lower(Int64(sqrt(dimension))))
+    return RJGPModel(grid, Σ, dimension, purifying_prior, create_rjess_permutation(Int64(sqrt(dimension))))
 end
 
 function reversible_slice_sampling(model::RJGPModel; ϵ = 0.01, n_samples = 1000, model_switching_probability = 0.3, prior_only = false)
