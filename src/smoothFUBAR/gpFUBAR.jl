@@ -3,22 +3,50 @@ struct RJGPModel
     Σ::Matrix{Float64} # Full kernel
     dimension::Int64
     purifying_prior::Float64
+    invp::Vector{Int64}
 end
 
+function invert_upper_then_lower(N::Int)
+    # Construct the same permutation p used to go from row-major to [upper, lower]
+    upper = Int[]
+    lower = Int[]
+    for i in 1:N
+        for j in 1:N
+            idx = (i-1)*N + j
+            if i < j
+                push!(upper, idx)
+            else
+                push!(lower, idx)
+            end
+        end
+    end
+    p = vcat(lower, upper)
 
+    # Compute inverse permutation invp so that v[p] == v_in_new_order
+    # => v_in_new_order[invp] == v
+    invp = similar(p)
+    for i in eachindex(p)
+        invp[p[i]] = i
+    end
+
+    # Apply inverse permutation to the input vector v
+    return invp
+end
+
+# Scuffed fix but hey this might work?
 function loglikelihood(model::RJGPModel, θ)
     full_θ = [softmax(θ); zeros(model.dimension - length(θ))]
-    return sum(log.(full_θ'model.grid.cond_lik_matrix))
+    return sum(log.(full_θ[model.invp]'model.grid.cond_lik_matrix)) # Here we hopåefully re-permute to FUBAR format
 end
 
 function rearrange_kernel_matrix(Σ)
     N = Int64(sqrt(size(Σ)[1]))
-    upper = [(i - 1) * N + j for i in 1:N for j in 1:N if i < j]
-    lower = [(i - 1) * N + j for i in 1:N for j in 1:N if i >= j]
-    p = vcat(upper, lower)
-    return Σ[p, p]
+    
+    # Convert from FUBAR's column-major to row-major
+    ordering = [(j-1)*N + i for i in 1:N for j in 1:N]
+    
+    return Σ[ordering, ordering]
 end
-
 function gaussian_kernel_matrix(grid; kernel_scaling=1.0)
     return kernel_matrix(grid, distance_function=x -> exp(-x / (2 * kernel_scaling^2)))
 end
@@ -39,7 +67,7 @@ end
 function generate_RJGP_model(grid::FUBARgrid; kernel_scaling = 1.0, purifying_prior = 1/2)
     Σ = rearrange_kernel_matrix(gaussian_kernel_matrix(grid, kernel_scaling = kernel_scaling))
     dimension = size(Σ)[1]
-    return RJGPModel(grid, Σ, dimension, purifying_prior)
+    return RJGPModel(grid, Σ, dimension, purifying_prior, invert_upper_then_lower(Int64(sqrt(dimension))))
 end
 
 function reversible_slice_sampling(model::RJGPModel; ϵ = 0.01, n_samples = 1000, model_switching_probability = 0.3, prior_only = false)
