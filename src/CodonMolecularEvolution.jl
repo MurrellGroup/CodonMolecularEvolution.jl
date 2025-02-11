@@ -38,5 +38,6 @@ export
     generate_RJGP_model,
     reversible_slice_sampling,
     plot_logposteriors_with_transitions,
-    gridplot
+    gridplot,
+    gpFUBAR
 end
