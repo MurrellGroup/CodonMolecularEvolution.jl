@@ -7,8 +7,8 @@ end
 
 
 function loglikelihood(model::RJGPModel, θ)
-    full_θ = [zeros(model.dimension - length(θ)); θ]
-    return sum(log.(softmax(full_θ)'model.grid.cond_lik_matrix))
+    full_θ = [softmax(θ); zeros(model.dimension - length(θ))]
+    return sum(log.(full_θ'model.grid.cond_lik_matrix))
 end
 
 function rearrange_kernel_matrix(Σ)
@@ -47,7 +47,7 @@ function reversible_slice_sampling(model::RJGPModel; ϵ = 0.01, n_samples = 1000
     full_covariance = 1/2 * (model.Σ + model.Σ') + (ϵ * I) # Tikhonov + posdef, need big ϵ for high kernel scaling
     N = Int64(sqrt(model.dimension))
     smallest_model_dimension = Int64(N * (N + 1) / 2)
-    model_dimensions = collect(smallest_model_dimension:(N^2))
+    model_dimensions = collect(smallest_model_dimension:10:(N^2)) # Hard-coded 10 is a bit ugly, we will fix this later
     # Uniform prior for positive selection models, "lump" prior for purifying
     puryfing_model_prior = (1 - model.purifying_prior) / (length(model_dimensions)-1)
     model_priors = [[model.purifying_prior]; puryfing_model_prior .* ones(length(model_dimensions)-1)]
@@ -56,4 +56,37 @@ function reversible_slice_sampling(model::RJGPModel; ϵ = 0.01, n_samples = 1000
     problem = RJESSProblem(ll, full_covariance, model_dimensions, model_priors)
 
     return rj_ess(problem, n_samples = n_samples, model_switching_probability = model_switching_probability)
+end
+
+function plot_logposteriors_with_transitions(model_indices, logposteriors)
+    # Initialize empty plot
+    p = plot(legend=true)
+    
+    # Find transition points
+    transitions = findall(diff(model_indices) .!= 0)
+    
+    # Add first segment
+    start_idx = 1
+    
+    for transition in transitions
+        # Plot segment up to transition
+        plot!(p, start_idx:transition, logposteriors[start_idx:transition], 
+              linewidth=2, label=(start_idx==1 ? "Log Posterior" : false))
+        
+        # Add vertical red line at transition
+        vline!([transition], color=:red, 
+               linestyle=:solid, label=(start_idx==1 ? "Model Transition" : false))
+        
+        # Start next segment after transition
+        start_idx = transition + 1
+    end
+    
+    # Plot final segment
+    if start_idx <= length(logposteriors)
+        plot!(p, start_idx:length(logposteriors), 
+              logposteriors[start_idx:end], 
+              linewidth=2, label=false)
+    end
+    
+    return p
 end

@@ -36,5 +36,7 @@ export
     shiftingHBviz,
     HBviz,
     generate_RJGP_model,
-    reversible_slice_sampling
+    reversible_slice_sampling,
+    plot_logposteriors_with_transitions,
+    gridplot
 end
