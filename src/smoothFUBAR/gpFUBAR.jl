@@ -231,5 +231,5 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
         gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, problem.grid.grid_values, fubar_samples[i])
     end
 
-    return posterior_mean_plot, diagnostic_plots, gif(anim, "gpFUBAR.gif")
+    return posterior_mean_plot, diagnostic_plots, anim
 end
