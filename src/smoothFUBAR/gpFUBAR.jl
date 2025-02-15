@@ -1,77 +1,113 @@
+# Fix 1: Modify RJGPModel to store the correct permutation
 struct RJGPModel
     grid::FUBARgrid
     Σ::Matrix{Float64} # Full kernel
     dimension::Int64
     purifying_prior::Float64
-    invp::Vector{Int64}
+    ess_to_fubar_perm::Vector{Int64}  # Changed name to be explicit
 end
 
-function create_rjess_permutation(N::Int)
-    rjess_to_fubar = Int[]
+"""
+    generate_ess_indices(N::Int)
 
-    # Upper triangular in RJESS format first
-    for col in 2:N
-        for row in 1:(col-1)  # Top down for each column above diagonal
-            fubar_idx = (col - 1) * N + row
-            push!(rjess_to_fubar, fubar_idx)
+Generate ESS format indices for an NxN grid. Indices are generated along diagonals
+from bottom-right to top-left, with each diagonal numbered from bottom to top.
+"""
+function generate_ess_indices(N::Int)
+    indices = zeros(Int, N, N)
+    current_index = 1
+    
+    # Loop over each diagonal, starting from bottom right
+    for diag in (2N-2):-1:0
+        # Calculate range for this diagonal
+        col_start = max(0, diag - N + 1)
+        col_end = min(diag, N-1)
+        
+        # Store positions for this diagonal (bottom to top)
+        positions = [(diag - col, col) 
+                    for col in col_end:-1:col_start]
+        
+        # Fill in indices
+        for pos in positions
+            indices[pos[1] + 1, pos[2] + 1] = current_index
+            current_index += 1
         end
     end
+    
+    return indices
+end
 
-    # Lower triangular + diagonal in RJESS format
+"""
+    generate_fubar_indices(N::Int)
+
+Generate FUBAR format indices for an NxN grid. Indices are generated column-wise
+from bottom to top, starting from the leftmost column.
+"""
+function generate_fubar_indices(N::Int)
+    indices = zeros(Int, N, N)
+    current_index = 1
+    
+    # Fill column by column, bottom to top
     for col in 1:N
-        for row in N:-1:col  # Bottom to top, including diagonal
-            fubar_idx = (col - 1) * N + row
-            push!(rjess_to_fubar, fubar_idx)
+        for row in N:-1:1
+            indices[row, col] = current_index
+            current_index += 1
         end
     end
-
-    # Create inverse permutation
-    invp = similar(rjess_to_fubar)
-    for i in eachindex(rjess_to_fubar)
-        invp[rjess_to_fubar[i]] = i
-    end
-
-    return invp
+    
+    return indices
 end
 
-# Scuffed fix but hey this might work?
+function get_ess_to_fubar_permutation(N::Int)
+    ess = generate_ess_indices(N)
+    fubar = generate_fubar_indices(N)
+    
+    # Create mapping from ESS indices to FUBAR indices
+    n_elements = N * N
+    perm = zeros(Int, n_elements)
+    
+    for i in 1:N
+        for j in 1:N
+            ess_idx = ess[i,j]
+            fubar_idx = fubar[i,j]
+            # We want to map FROM ess TO fubar, so:
+            perm[fubar_idx] = ess_idx  # This line was wrong before!
+        end
+    end
+    
+    return perm
+end
+
+function get_fubar_to_ess_permutation(N::Int)
+    ess = generate_ess_indices(N)
+    fubar = generate_fubar_indices(N)
+    
+    # Create mapping from FUBAR indices to ESS indices
+    n_elements = N * N
+    perm = zeros(Int, n_elements)
+    
+    for i in 1:N
+        for j in 1:N
+            ess_idx = ess[i,j]
+            fubar_idx = fubar[i,j]
+            # We want to map FROM fubar TO ess, so:
+            perm[ess_idx] = fubar_idx  # This line was wrong before!
+        end
+    end
+    
+    return perm
+end
+
+# Fix 3: Update the loglikelihood function
 function loglikelihood(model::RJGPModel, θ)
     full_θ = [softmax(θ); zeros(model.dimension - length(θ))]
-    return sum(log.(full_θ[model.invp]'model.grid.cond_lik_matrix)) # Here we hopåefully re-permute to FUBAR format
+    return sum(log.(full_θ[model.ess_to_fubar_perm]'model.grid.cond_lik_matrix))
 end
 
+
 function rearrange_kernel_matrix(Σ)
-    N = Int64(sqrt(size(Σ)[1]))
-    result = zeros(N * N, N * N)
-
-    # Create mapping from RJESS indices to FUBAR indices
-    rjess_to_fubar = Int[]
-
-    # First map upper triangular elements
-    for col in 2:N
-        for row in 1:(col-1)
-            fubar_idx = (col - 1) * N + row
-            push!(rjess_to_fubar, fubar_idx)
-        end
-    end
-
-    # Then map lower triangular + diagonal elements
-    # Following exact pattern from RJESS grid
-    for col in 1:N
-        for row in N:-1:col  # Bottom to top, including diagonal
-            fubar_idx = (col - 1) * N + row
-            push!(rjess_to_fubar, fubar_idx)
-        end
-    end
-
-    # Rearrange kernel matrix using this mapping
-    for (i, fi) in enumerate(rjess_to_fubar)
-        for (j, fj) in enumerate(rjess_to_fubar)
-            result[i, j] = Σ[fi, fj]
-        end
-    end
-
-    return result
+    fubar_to_ess = get_fubar_to_ess_permutation(Int64(sqrt(size(Σ)[1])))
+    return Σ[fubar_to_ess, fubar_to_ess]
 end
 
 
@@ -92,18 +128,24 @@ function kernel_matrix(grid; distance_function=x -> exp(-x))
     return distances
 end
 
-function generate_RJGP_model(grid::FUBARgrid; kernel_scaling=1.0, purifying_prior=1 / 2)
+# Fix 2: Update the model constructor
+function generate_RJGP_model(grid::FUBARgrid; kernel_scaling=1.0, purifying_prior=1/2)
     Σ = rearrange_kernel_matrix(gaussian_kernel_matrix(grid, kernel_scaling=kernel_scaling))
     dimension = size(Σ)[1]
-    return RJGPModel(grid, Σ, dimension, purifying_prior, create_rjess_permutation(Int64(sqrt(dimension))))
+    return RJGPModel(
+        grid, 
+        Σ, 
+        dimension, 
+        purifying_prior, 
+        get_ess_to_fubar_permutation(Int64(sqrt(dimension)))  # Changed to ESS→FUBAR
+    )
 end
-
 function reversible_slice_sampling(model::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.3, prior_only=false)
     ll = prior_only ? x -> 0 : x -> loglikelihood(model, x)
     full_covariance = 1 / 2 * (model.Σ + model.Σ') + (ϵ * I) # Tikhonov + posdef, need big ϵ for high kernel scaling
     N = Int64(sqrt(model.dimension))
     smallest_model_dimension = Int64(N * (N + 1) / 2)
-    model_dimensions = collect(smallest_model_dimension:10:(N^2)) # Hard-coded 10 is a bit ugly, we will fix this later
+    model_dimensions = collect(smallest_model_dimension:(N^2)) # Hard-coded 10 is a bit ugly, we will fix this later
     # Uniform prior for positive selection models, "lump" prior for purifying
     puryfing_model_prior = (1 - model.purifying_prior) / (length(model_dimensions) - 1)
     model_priors = [[model.purifying_prior]; puryfing_model_prior .* ones(length(model_dimensions) - 1)]
@@ -148,30 +190,10 @@ function plot_logposteriors_with_transitions(model_indices, logposteriors)
 end
 
 function compute_rjess_to_fubar_permutation(v::AbstractVector{Float64}, N::Int)
-    result = zeros(N * N)
-    idx = N * (N - 1) ÷ 2 + 1  # Start idx for lower triangle + diagonal
-
-    # First process lower triangle + diagonal going up each column
-    for col in 1:N
-        for row in N:-1:col  # Bottom to top, including diagonal
-            fubar_idx = (col - 1) * N + row
-            result[fubar_idx] = v[idx]
-            idx += 1
-        end
-    end
-
-    # Then process ALL upper triangular elements
-    idx = 1  # Reset idx to start of vector for upper triangle
-    for col in 2:N
-        for row in 1:(col-1)  # Top down for each column above diagonal
-            fubar_idx = (col - 1) * N + row
-            result[fubar_idx] = v[idx]
-            idx += 1
-        end
-    end
-
-    return result
-end
+    ess_to_fubar = get_ess_to_fubar_permutation(N)  # Get ESS→FUBAR permutation
+    return v[ess_to_fubar]  # Apply it to transform ESS→FUBAR
+ end
+ 
 
 function softmax(x)
     exp_x = exp.(x .- maximum(x))
@@ -199,8 +221,8 @@ function compute_purifying_bayes_factor(model_indices, purifying_prior)
     return bayes_factor
 end
 
-function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.01)
-    samples, model_indices, logposteriors, jump_history = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability)
+function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.01, prior_only=false)
+    samples, model_indices, logposteriors, jump_history = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
 
     bayes_factor = compute_purifying_bayes_factor(model_indices, problem.purifying_prior)
     println("Bayes factor (M1/M>1): ", bayes_factor)
@@ -208,8 +230,8 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
     formatted_samples = [format_sample(sample, problem.dimension) for sample in samples]
     fubar_samples = [compute_rjess_to_fubar_permutation(formatted_sample, Int64(sqrt(problem.dimension))) for formatted_sample in formatted_samples]
 
-    posterior_mean = mean(fubar_samples)
-    active_parameters = length.(samples)
+    posterior_mean = mean(fubar_samples[1:1000:end]) # Only plot every 1000th sample
+    active_parameters = length.(samples[1:1000:end]) # Only plot every 1000th sample
 
     # Create individual plots
     posterior_mean_plot = gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, 
@@ -227,7 +249,7 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
                           size=(600, 800))
     
     # Create animation
-    anim = @animate for i in 1:100:length(formatted_samples)
+    anim = @animate for i in 1:1000:length(formatted_samples)
         gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, problem.grid.grid_values, fubar_samples[i])
     end
 

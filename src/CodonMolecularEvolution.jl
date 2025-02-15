@@ -39,5 +39,6 @@ export
     reversible_slice_sampling,
     plot_logposteriors_with_transitions,
     gridplot,
-    gpFUBAR
+    gpFUBAR,
+    compute_rjess_to_fubar_permutation
 end
