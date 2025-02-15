@@ -144,16 +144,18 @@ function reversible_slice_sampling(model::RJGPModel; ϵ=0.01, n_samples=1000, mo
     ll = prior_only ? x -> 0 : x -> loglikelihood(model, x)
     full_covariance = 1 / 2 * (model.Σ + model.Σ') + (ϵ * I) # Tikhonov + posdef, need big ϵ for high kernel scaling
     N = Int64(sqrt(model.dimension))
-    smallest_model_dimension = Int64(N * (N + 1) / 2)
-    model_dimensions = collect(smallest_model_dimension:(N^2)) # Hard-coded 10 is a bit ugly, we will fix this later
+    smallest_model_dimension = Int64(N * (N - 1) / 2)
+    model_dimensions = accumulate((x,i) -> x + (N-i), 0:(N-1); init=smallest_model_dimension)
     # Uniform prior for positive selection models, "lump" prior for purifying
-    puryfing_model_prior = (1 - model.purifying_prior) / (length(model_dimensions) - 1)
-    model_priors = [[model.purifying_prior]; puryfing_model_prior .* ones(length(model_dimensions) - 1)]
+    diversifying_model_prior = (1 - model.purifying_prior) / (length(model_dimensions) - 1)
+    model_priors = [[model.purifying_prior]; diversifying_model_prior .* ones(length(model_dimensions) - 1)]
     println("Model dimension: ", model_dimensions[end])
     println("Σ minimum eigenvalue: ", minimum(eigvals(full_covariance)))
-    problem = RJESSProblem(ll, full_covariance, model_dimensions, model_priors)
+    println("Model priors: ", model_priors)
+    println("Model dimensions: ", model_dimensions)
+    problem = generate_reversible_slice_sampler(full_covariance, model_dimensions, model_priors, ll; prior_only=prior_only)
 
-    return rj_ess(problem, n_samples=n_samples, model_switching_probability=model_switching_probability)
+    return reversible_jump_ess(problem, n_samples=n_samples, model_switching_probability=model_switching_probability)
 end
 
 function plot_logposteriors_with_transitions(model_indices, logposteriors)
@@ -222,10 +224,20 @@ function compute_purifying_bayes_factor(model_indices, purifying_prior)
 end
 
 function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.01, prior_only=false)
-    samples, model_indices, logposteriors, jump_history = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
+    samples, model_indices, logposteriors = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
 
+    # Use all samples for Bayes factor calculation and model frequencies
     bayes_factor = compute_purifying_bayes_factor(model_indices, problem.purifying_prior)
-    println("Bayes factor (M1/M>1): ", bayes_factor)
+    
+    # Calculate and print model time distributions using all samples
+    model_counts = countmap(model_indices)
+    total_samples = length(model_indices)
+    println("\nModel time distributions:")
+    for (model, count) in sort(collect(model_counts))
+        percentage = (count / total_samples) * 100
+        println("Model $model: $(round(percentage, digits=2))% ($(count) samples)")
+    end
+    println("\nBayes factor (M1/M>1): ", bayes_factor)
 
     formatted_samples = [format_sample(sample, problem.dimension) for sample in samples]
     fubar_samples = [compute_rjess_to_fubar_permutation(formatted_sample, Int64(sqrt(problem.dimension))) for formatted_sample in formatted_samples]
