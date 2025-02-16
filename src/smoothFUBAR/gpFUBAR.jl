@@ -140,7 +140,7 @@ function generate_RJGP_model(grid::FUBARgrid; kernel_scaling=1.0, purifying_prio
         get_ess_to_fubar_permutation(Int64(sqrt(dimension)))  # Changed to ESS→FUBAR
     )
 end
-function reversible_slice_sampling(model::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.3, prior_only=false)
+function reversible_slice_sampling(model::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.3, prior_only=false, diagnostics = false)
     ll = prior_only ? x -> 0 : x -> loglikelihood(model, x)
     full_covariance = 1 / 2 * (model.Σ + model.Σ') + (ϵ * I) # Tikhonov + posdef, need big ϵ for high kernel scaling
     N = Int64(sqrt(model.dimension))
@@ -149,10 +149,12 @@ function reversible_slice_sampling(model::RJGPModel; ϵ=0.01, n_samples=1000, mo
     # Uniform prior for positive selection models, "lump" prior for purifying
     diversifying_model_prior = (1 - model.purifying_prior) / (length(model_dimensions) - 1)
     model_priors = [[model.purifying_prior]; diversifying_model_prior .* ones(length(model_dimensions) - 1)]
-    println("Model dimension: ", model_dimensions[end])
-    println("Σ minimum eigenvalue: ", minimum(eigvals(full_covariance)))
-    println("Model priors: ", model_priors)
-    println("Model dimensions: ", model_dimensions)
+    if diagnostics
+        println("Model dimension: ", model_dimensions[end])
+        println("Σ minimum eigenvalue: ", minimum(eigvals(full_covariance)))
+        println("Model priors: ", model_priors)
+        println("Model dimensions: ", model_dimensions)
+    end
     problem = generate_reversible_slice_sampler(full_covariance, model_dimensions, model_priors, ll; prior_only=prior_only)
 
     return reversible_jump_ess(problem, n_samples=n_samples, model_switching_probability=model_switching_probability)
@@ -207,9 +209,15 @@ function format_sample(sample, max_dimension)
 end
 
 function compute_purifying_bayes_factor(model_indices, purifying_prior)
+    # Calculate burnin (20% of samples)
+    burnin = Int(floor(0.2 * length(model_indices)))
+    
+    # Use only post-burnin samples
+    post_burnin_indices = model_indices[(burnin + 1):end]
+    
     # Count visits to model 1 (purifying) and models > 1 (non-purifying)
-    purifying_visits = count(x -> x == 1, model_indices)
-    non_purifying_visits = count(x -> x > 1, model_indices)
+    purifying_visits = count(x -> x == 1, post_burnin_indices)
+    non_purifying_visits = count(x -> x > 1, post_burnin_indices)
     
     # Compute posterior odds
     posterior_odds = purifying_visits / non_purifying_visits
@@ -223,8 +231,8 @@ function compute_purifying_bayes_factor(model_indices, purifying_prior)
     return bayes_factor
 end
 
-function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.01, prior_only=false)
-    samples, model_indices = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
+function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.01, prior_only=false, diagnostics = false)
+    samples, model_indices, logposteriors, jump_diagnostics = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
 
     # Use all samples for Bayes factor calculation and model frequencies
     bayes_factor = compute_purifying_bayes_factor(model_indices, problem.purifying_prior)
@@ -232,18 +240,23 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
     # Calculate and print model time distributions using all samples
     model_counts = countmap(model_indices)
     total_samples = length(model_indices)
-    println("\nModel time distributions:")
-    for (model, count) in sort(collect(model_counts))
+    println("Jump acceptance rate: ", jump_diagnostics.accepted / jump_diagnostics.proposed)
+    if diagnostics 
+        println("\nModel time distributions:")
+    end
+        for (model, count) in sort(collect(model_counts))
         percentage = (count / total_samples) * 100
+       if diagnostics
         println("Model $model: $(round(percentage, digits=2))% ($(count) samples)")
+       end
     end
     println("\nBayes factor (M1/M>1): ", bayes_factor)
 
     formatted_samples = [format_sample(sample, problem.dimension) for sample in samples]
     fubar_samples = [compute_rjess_to_fubar_permutation(formatted_sample, Int64(sqrt(problem.dimension))) for formatted_sample in formatted_samples]
 
-    posterior_mean = mean(fubar_samples[1:1000:end]) # Only plot every 1000th sample
-    active_parameters = length.(samples[1:1000:end]) # Only plot every 1000th sample
+    posterior_mean = mean(fubar_samples[1:100:end]) # Only plot every 1000th sample
+    active_parameters = length.(samples[1:100:end]) # Only plot every 1000th sample
 
     # Create individual plots
     posterior_mean_plot = gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, 
@@ -261,7 +274,7 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
                           size=(600, 800))
     
     # Create animation
-    anim = @animate for i in 1:1000:length(formatted_samples)
+    anim = @animate for i in 1:200:length(formatted_samples)
         gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, problem.grid.grid_values, fubar_samples[i])
     end
 

@@ -80,6 +80,11 @@ end
 function reversible_jump_ess(sampler::ReversibleSliceSampler; n_samples=1000, model_switching_probability=0.05)
     θ = []
     model_indices = []
+    logposteriors = []
+    
+    # Add counters for jumps
+    proposed_jumps = 0
+    accepted_jumps = 0
     
     # Initialize
     current_model_index = rand(1:length(sampler.model_dimensions))
@@ -93,12 +98,20 @@ function reversible_jump_ess(sampler::ReversibleSliceSampler; n_samples=1000, mo
                               sampler.marginal_Σ_cholesky[model_index]), x) + 
                log(sampler.model_priors[model_index])
     end
+    current_logposterior = ℓπ(current_θ, current_model_index)
     
     while length(θ) < n_samples
         if rand() < model_switching_probability
+            # Increment proposed jumps counter
+            proposed_jumps += 1
+            
             # Attempt model switch
             proposed_θ, proposed_model_index, log_proposal_density = 
                 generate_jump_proposal(sampler, current_θ, current_model_index)
+            
+            # Compute proposed log posterior
+            proposed_logposterior = ℓπ(proposed_θ, proposed_model_index)
+            current_logposterior = ℓπ(current_θ, current_model_index)
             
             # Compute acceptance ratio components
             likelihood_ratio = sampler.loglikelihood(proposed_θ) - sampler.loglikelihood(current_θ)
@@ -121,17 +134,23 @@ function reversible_jump_ess(sampler::ReversibleSliceSampler; n_samples=1000, mo
             log_α = likelihood_ratio + prior_ratio + proposal_ratio
             
             if log(rand()) < log_α
+                # Increment accepted jumps counter
+                accepted_jumps += 1
+                
                 current_θ = proposed_θ
                 current_model_index = proposed_model_index
+                current_logposterior = proposed_logposterior
             end
         else
             # Within-model update using ESS
             current_θ = sample_within_model(sampler, current_θ, current_model_index)
+            current_logposterior = ℓπ(current_θ, current_model_index)
         end
         
         push!(θ, copy(current_θ))
         push!(model_indices, current_model_index)
+        push!(logposteriors, current_logposterior)
     end
     
-    return θ, model_indices
+    return θ, model_indices, logposteriors, (proposed=proposed_jumps, accepted=accepted_jumps)
 end
