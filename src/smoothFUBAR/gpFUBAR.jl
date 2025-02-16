@@ -235,7 +235,7 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
     samples, model_indices, logposteriors = rjess(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
 
     # Use all samples for Bayes factor calculation and model frequencies
-    bayes_factor = compute_purifying_bayes_factor(model_indices, problem.purifying_prior)
+    bayes_factor = 1 / compute_purifying_bayes_factor(model_indices, problem.purifying_prior)
     
     # Calculate and print model time distributions using all samples
     model_counts = countmap(model_indices)
@@ -255,8 +255,8 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
     formatted_samples = [format_sample(sample, problem.dimension) for sample in samples]
     fubar_samples = [compute_rjess_to_fubar_permutation(formatted_sample, Int64(sqrt(problem.dimension))) for formatted_sample in formatted_samples]
 
-    posterior_mean = mean(fubar_samples[1:2000:end]) # Only plot every 1000th sample
-    active_parameters = length.(samples[1:2000:end]) # Only plot every 1000th sample
+    posterior_mean = mean(fubar_samples[1:100:end]) # Only plot every 1000th sample
+    active_parameters = length.(samples[1:100:end]) # Only plot every 1000th sample
 
     # Create individual plots
     posterior_mean_plot = gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, 
@@ -266,12 +266,12 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
                                  title="Active Parameters",
                                  xlabel="Iteration",
                                  ylabel="Number of Parameters")
-    logposterior_plot = plot_logposteriors_with_transitions(model_indices[1:2000:end], logposteriors[1:2000:end])
+    logposterior_plot = plot_logposteriors_with_transitions(model_indices[1:100:end], logposteriors[1:100:end])
     
-    # Create diagnostic plots layout
+    # Create diagnostic plots layout with modified dimensions
     diagnostic_plots = plot(active_parameter_trace, logposterior_plot,
                            layout=(2,1),
-                           size=(600, 1800))
+                           size=(1000, 800))  # Changed from (600, 1800) to (800, 400)
     
     # Create animation
     anim = @animate for i in 1:1000:length(formatted_samples)
