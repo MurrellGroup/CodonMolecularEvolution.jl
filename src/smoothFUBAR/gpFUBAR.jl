@@ -224,7 +224,7 @@ function compute_purifying_bayes_factor(model_indices, purifying_prior)
 end
 
 function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_probability=0.01, prior_only=false)
-    samples, model_indices, logposteriors = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
+    samples, model_indices = reversible_slice_sampling(problem, ϵ=ϵ, n_samples=n_samples, model_switching_probability=model_switching_probability, prior_only=prior_only)
 
     # Use all samples for Bayes factor calculation and model frequencies
     bayes_factor = compute_purifying_bayes_factor(model_indices, problem.purifying_prior)

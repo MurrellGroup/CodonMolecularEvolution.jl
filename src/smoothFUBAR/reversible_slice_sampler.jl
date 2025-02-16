@@ -37,17 +37,38 @@ end
 
 function generate_jump_proposal(sampler::ReversibleSliceSampler, θ::Vector{Float64}, current_model_index::Int64)
     proposed_model_index = rand(setdiff(1:length(sampler.model_dimensions), current_model_index))
-    dimension_difference = sampler.model_dimensions[proposed_model_index] - sampler.model_dimensions[current_model_index]
-    if dimension_difference > 0
-        new_θ = sampler.conditional_cholesky[(current_model_index, proposed_model_index)] * randn(dimension_difference)
-        log_jacobian = logdet(sampler.conditional_cholesky[(current_model_index, proposed_model_index)])
-        return [θ; new_θ], proposed_model_index, log_jacobian
-    else
-        new_θ = θ[1:sampler.model_dimensions[proposed_model_index]] # Deterministic projection
-        log_jacobian = -logdet(sampler.conditional_cholesky[(proposed_model_index, current_model_index)])
-        return new_θ, proposed_model_index, log_jacobian
+    
+    # Get dimensions
+    n_current = sampler.model_dimensions[current_model_index]
+    n_proposed = sampler.model_dimensions[proposed_model_index]
+    
+    if n_proposed > n_current  # Moving up
+        # Extract necessary covariance blocks
+        Σ_11 = sampler.marginal_Σ_cholesky[current_model_index]
+        Σ_12 = sampler.full_Σ_cholesky.mat[1:n_current, (n_current+1):n_proposed]
+        
+        # Compute conditional mean
+        conditional_mean = Σ_12' * (Σ_11 \ θ)
+        
+        # Sample new parameters from conditional distribution
+        conditional_cov = sampler.conditional_cholesky[(current_model_index, proposed_model_index)]
+        new_components = conditional_mean + conditional_cov * randn(n_proposed - n_current)
+        
+        # Compute log proposal density (needed for acceptance ratio)
+        log_proposal_density = logpdf(MvNormal(conditional_mean, conditional_cov), new_components)
+        
+        return [θ; new_components], proposed_model_index, log_proposal_density
+        
+    else  # Moving down
+        # For downward moves, we need the proposal density for the reverse move
+        conditional_mean = sampler.full_Σ_cholesky.mat[1:n_proposed, (n_proposed+1):n_current]' * 
+                         (sampler.marginal_Σ_cholesky[proposed_model_index] \ θ[1:n_proposed])
+        
+        conditional_cov = sampler.conditional_cholesky[(proposed_model_index, current_model_index)]
+        log_proposal_density = logpdf(MvNormal(conditional_mean, conditional_cov), θ[(n_proposed+1):end])
+        
+        return θ[1:n_proposed], proposed_model_index, log_proposal_density
     end
-
 end
 
 function sample_within_model(sampler::ReversibleSliceSampler, θ::Vector{Float64}, current_model_index::Int64)
@@ -59,35 +80,58 @@ end
 function reversible_jump_ess(sampler::ReversibleSliceSampler; n_samples=1000, model_switching_probability=0.05)
     θ = []
     model_indices = []
-
-    current_model_index = rand(1:length(sampler.model_dimensions))
-    current_θ = rand(MvNormal(zeros(sampler.model_dimensions[current_model_index]), sampler.marginal_Σ_cholesky[current_model_index]))
     
-    ℓπ = (x, model_index) -> sampler.loglikelihood(x) + logpdf(MvNormal(zeros(sampler.model_dimensions[model_index]), sampler.marginal_Σ_cholesky[model_index]), x)[1] + log(sampler.model_priors[model_index])
-
-    logposteriors = [ℓπ(current_θ, current_model_index)]
+    # Initialize
+    current_model_index = rand(1:length(sampler.model_dimensions))
+    current_θ = rand(MvNormal(zeros(sampler.model_dimensions[current_model_index]), 
+                             sampler.marginal_Σ_cholesky[current_model_index]))
+    
+    # Log posterior function (including parameter prior)
+    function ℓπ(x, model_index)
+        return sampler.loglikelihood(x) + 
+               logpdf(MvNormal(zeros(sampler.model_dimensions[model_index]), 
+                              sampler.marginal_Σ_cholesky[model_index]), x) + 
+               log(sampler.model_priors[model_index])
+    end
+    
     while length(θ) < n_samples
         if rand() < model_switching_probability
-            proposed_θ, proposed_model_index, log_jacobian = generate_jump_proposal(sampler, current_θ, current_model_index)
+            # Attempt model switch
+            proposed_θ, proposed_model_index, log_proposal_density = 
+                generate_jump_proposal(sampler, current_θ, current_model_index)
+            
+            # Compute acceptance ratio components
             likelihood_ratio = sampler.loglikelihood(proposed_θ) - sampler.loglikelihood(current_θ)
-
-            model_prior_ratio = log(sampler.model_priors[proposed_model_index]) - log(sampler.model_priors[current_model_index])
-
+            
+            # Prior ratio (both parameter and model index)
+            prior_ratio = logpdf(MvNormal(zeros(sampler.model_dimensions[proposed_model_index]), 
+                                        sampler.marginal_Σ_cholesky[proposed_model_index]), proposed_θ) -
+                         logpdf(MvNormal(zeros(sampler.model_dimensions[current_model_index]), 
+                                       sampler.marginal_Σ_cholesky[current_model_index]), current_θ) +
+                         log(sampler.model_priors[proposed_model_index]) - 
+                         log(sampler.model_priors[current_model_index])
+            
+            # For upward moves, we subtract the log proposal density
+            # For downward moves, we add it
+            proposal_ratio = sampler.model_dimensions[proposed_model_index] < 
+                           sampler.model_dimensions[current_model_index] ? 
+                           log_proposal_density : -log_proposal_density
+            
             # Total log acceptance ratio
-            log_α = likelihood_ratio + model_prior_ratio + log_jacobian
+            log_α = likelihood_ratio + prior_ratio + proposal_ratio
+            
             if log(rand()) < log_α
                 current_θ = proposed_θ
                 current_model_index = proposed_model_index
-                push!(θ, current_θ)
-                push!(model_indices, current_model_index)
-                push!(logposteriors, ℓπ(current_θ, current_model_index))
             end
         else
+            # Within-model update using ESS
             current_θ = sample_within_model(sampler, current_θ, current_model_index)
-            push!(θ, current_θ)
-            push!(model_indices, current_model_index)
-            push!(logposteriors, ℓπ(current_θ, current_model_index))
         end
+        
+        push!(θ, copy(current_θ))
+        push!(model_indices, current_model_index)
     end
-    return θ, model_indices, logposteriors
+    
+    return θ, model_indices
 end
