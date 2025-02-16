@@ -252,29 +252,30 @@ function gpFUBAR(problem::RJGPModel; ϵ=0.01, n_samples=1000, model_switching_pr
     end
     println("\nBayes factor (M1/M>1): ", bayes_factor)
 
-    # formatted_samples = [format_sample(sample, problem.dimension) for sample in samples]
-    # fubar_samples = [compute_rjess_to_fubar_permutation(formatted_sample, Int64(sqrt(problem.dimension))) for formatted_sample in formatted_samples]
+    formatted_samples = [format_sample(sample, problem.dimension) for sample in samples]
+    fubar_samples = [compute_rjess_to_fubar_permutation(formatted_sample, Int64(sqrt(problem.dimension))) for formatted_sample in formatted_samples]
 
-    # posterior_mean = mean(fubar_samples[1:100:end]) # Only plot every 1000th sample
-    # active_parameters = length.(samples[1:100:end]) # Only plot every 1000th sample
+    posterior_mean = mean(fubar_samples[1:2000:end]) # Only plot every 1000th sample
+    active_parameters = length.(samples[1:2000:end]) # Only plot every 1000th sample
 
     # Create individual plots
-   #  posterior_mean_plot = gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, 
-  #                                problem.grid.grid_values, posterior_mean, 
-  #                                title="Posterior Mean")
- #    active_parameter_trace = plot(active_parameters, 
-  #                               title="Active Parameters",
-  #                               xlabel="Iteration",
-  #                               ylabel="Number of Parameters")
-# logposterior_plot = plot_logposteriors_with_transitions(model_indices, logposteriors)
+    posterior_mean_plot = gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, 
+                                 problem.grid.grid_values, posterior_mean, 
+                                 title="Posterior Mean")
+    active_parameter_trace = plot(active_parameters, 
+                                 title="Active Parameters",
+                                 xlabel="Iteration",
+                                 ylabel="Number of Parameters")
+    logposterior_plot = plot_logposteriors_with_transitions(model_indices[1:2000:end], logposteriors[1:2000:end])
     
     # Create diagnostic plots layout
-   # diagnostic_plots = plot(active_parameter_trace, logposterior_plot,
-   #                       layout=(2,1),
-   #                       size=(600, 800))
+    diagnostic_plots = plot(active_parameter_trace, logposterior_plot,
+                           layout=(2,1),
+                           size=(600, 1800))
     
     # Create animation
-    # anim = @animate for i in 1:200:length(formatted_samples)
-    #     gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, problem.grid.grid_values, fubar_samples[i])
-    # end
+    anim = @animate for i in 1:1000:length(formatted_samples)
+        gridplot(problem.grid.alpha_ind_vec, problem.grid.beta_ind_vec, problem.grid.grid_values, fubar_samples[i])
+    end
+    return posterior_mean_plot, diagnostic_plots, anim
 end
