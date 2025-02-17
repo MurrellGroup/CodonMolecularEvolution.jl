@@ -6,7 +6,6 @@
 #- Introduce a jump model with an additional class of jumps to independent draws from the equilibrium fits, and make it easy to use this instead
 #- Allow viz functions to have both kids of offsets (include the AA offsets in the fitness plot, but not the codon offsets)
 
-#TODO fix t < time + next_event double counting issue
 
 abstract type CodonSimulationPartition <: Partition end #Must have .sites::Int64, .codons::Vector{Int64}, and .code::GeneticCode
 
@@ -180,7 +179,7 @@ function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matri
     current_codon = codon
     t = 0.0
     next_event = 0.0
-    while t+next_event < time
+    while t < time
         HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, transform(current_fits .+ scaled_fitness_model.offsets), transform(scaled_fitness_model.codon_offsets), genetic_code=genetic_code)
         sum_HBrow = sum(HBrow)
         rOU,rHB = (scaled_fitness_model.event_rate,sum_HBrow)
@@ -547,7 +546,7 @@ function jumpy_Ne(logNe, logNe_model, time)
     t = 0.0
     next_event = 0.0
     logNe_trajectory = Vector{Tuple{Float64, Float64}}()
-    while t+next_event < time
+    while t < time
         next_event = randexp()/logNe_model.event_rate
         t = t+next_event
         if t < time
