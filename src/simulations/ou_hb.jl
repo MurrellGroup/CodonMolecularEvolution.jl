@@ -170,7 +170,12 @@ Evolves fitnesses and codons over time using the HB98 model. `fitnesses` is the 
 `nuc_matrix` is the symmetric nucleotide substitution matrix, `alpha` is the synonymous rate, and `time` is the total time to evolve over.
 """
 function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matrix, alpha, time;
-        genetic_code = MolecularEvolution.universal_code, push_into = nothing)
+        genetic_code = MolecularEvolution.universal_code, push_into = nothing, logNe = nothing, time_origin = 0.0)
+    if isnothing(logNe)
+        transform = identity
+    else
+        transform = x -> x .* exp(logNe) .* 2
+    end
     codon_jumps = 0
     fitness_jumps = 0
     current_fits = copy(fitnesses)
@@ -178,7 +183,7 @@ function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matri
     t = 0.0
     next_event = 0.0
     while t+next_event < time
-        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, current_fits .+ scaled_fitness_model.offsets, scaled_fitness_model.codon_offsets, genetic_code=genetic_code)
+        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, transform(current_fits .+ scaled_fitness_model.offsets), transform(scaled_fitness_model.codon_offsets), genetic_code=genetic_code)
         sum_HBrow = sum(HBrow)
         rOU,rHB = (scaled_fitness_model.event_rate,sum_HBrow)
         total_rate = rOU+rHB
@@ -195,7 +200,11 @@ function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matri
             end
         end
         if !isnothing(push_into)
-            push!(push_into,(t,current_codon,copy(current_fits)))
+            if !isnothing(logNe)
+                push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits)),logNe))
+            else
+                push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits))))
+            end
         end
     end
     return current_fits, current_codon, codon_jumps, fitness_jumps
@@ -523,7 +532,7 @@ function jumpy_NeHB_codon_evolve(fitnesses, logNe_trajectory, codon, fitness_mod
     current_codon = codon
     t = 0.0
     for (next_event, current_logNe) in logNe_trajectory
-        current_fits, current_codon, local_codon_jumps, local_fitness_jumps = fixed_Ne_jumpy_HB_codon_evolve(current_fits, current_logNe, current_codon, fitness_model, nuc_matrix, alpha, next_event, t; genetic_code = genetic_code, push_into = push_into)
+        current_fits, current_codon, local_codon_jumps, local_fitness_jumps = jumpy_HB_codon_evolve(current_fits, current_codon, fitness_model, nuc_matrix, alpha, next_event; genetic_code = genetic_code, push_into = push_into, logNe = current_logNe, time_origin = t)
         t = t+next_event
         codon_jumps += local_codon_jumps
         fitness_jumps += local_fitness_jumps
@@ -534,37 +543,6 @@ function jumpy_NeHB_codon_evolve(fitnesses, logNe_trajectory, codon, fitness_mod
     return logNe_trajectory[end][2], current_fits, current_codon, codon_jumps, fitness_jumps, length(logNe_trajectory)-1
 end
 
-function fixed_Ne_jumpy_HB_codon_evolve(fitnesses, current_logNe, codon, fitness_model, nuc_matrix, alpha, time, time_origin;
-    genetic_code = MolecularEvolution.universal_code, push_into = nothing)
-    codon_jumps = 0
-    fitness_jumps = 0
-    current_fits = copy(fitnesses)
-    current_codon = codon
-    t = 0.0
-    next_event = 0.0
-    while t+next_event < time
-        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, (current_fits .+ fitness_model.offsets) .* exp(current_logNe) .* 2, fitness_model.codon_offsets .* exp(current_logNe) .* 2, genetic_code=genetic_code)
-        sum_HBrow = sum(HBrow)
-        rOU, rHB = (fitness_model.event_rate, sum_HBrow)
-        total_rate = rOU+rHB
-        next_event = randexp()/total_rate
-        t = t+next_event
-        if t < time
-            event_index = sample(1:2,Weights([rOU,rHB])) 
-            if event_index == 1 # Fitness jump event
-                fitness_jumps += 1
-                current_fits = jump(current_fits, fitness_model)
-            else # Codon substitution event
-                codon_jumps += 1
-                current_codon = sample(1:length(HBrow),Weights(HBrow))
-            end
-            if !isnothing(push_into)
-                push!(push_into,(time_origin+t,current_codon,copy(current_fits) .* exp(current_logNe) .* 2,current_logNe))
-            end
-        end
-    end
-    return current_fits, current_codon, codon_jumps, fitness_jumps
-end
 
 function jumpy_Ne(logNe, logNe_model, time)
     current_logNe = logNe
