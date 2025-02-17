@@ -8,8 +8,6 @@
 
 #TODO fix t < time + next_event double counting issue
 
-#TODO fix pushing into coll within if statement
-
 abstract type CodonSimulationPartition <: Partition end #Must have .sites::Int64, .codons::Vector{Int64}, and .code::GeneticCode
 
 #Does nothing because the `forward!` function implicitly samples.
@@ -198,12 +196,12 @@ function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matri
                 codon_jumps += 1
                 current_codon = sample(1:length(HBrow),Weights(HBrow))
             end
-        end
-        if !isnothing(push_into)
-            if !isnothing(logNe)
-                push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits)),logNe))
-            else
-                push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits))))
+            if !isnothing(push_into)
+                if !isnothing(logNe)
+                    push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits)),logNe))
+                else
+                    push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits))))
+                end
             end
         end
     end
