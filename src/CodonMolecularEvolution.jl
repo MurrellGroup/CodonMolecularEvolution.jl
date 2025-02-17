@@ -29,8 +29,11 @@ export
     maxdNdS2std,
     HB98AA_matrix,
     ShiftingHBSimModel,
+    ShiftingNeHBSimModel,
     ShiftingHBSimPartition,
+    ShiftingNeHBSimPartition,
     PiecewiseOUModel,
     shiftingHBviz,
+    shiftingNeHBviz,
     HBviz
 end
