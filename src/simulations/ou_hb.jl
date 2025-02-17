@@ -6,6 +6,7 @@
 #- Introduce a jump model with an additional class of jumps to independent draws from the equilibrium fits, and make it easy to use this instead
 #- Allow viz functions to have both kids of offsets (include the AA offsets in the fitness plot, but not the codon offsets)
 
+
 abstract type CodonSimulationPartition <: Partition end #Must have .sites::Int64, .codons::Vector{Int64}, and .code::GeneticCode
 
 #Does nothing because the `forward!` function implicitly samples.
@@ -166,15 +167,20 @@ Evolves fitnesses and codons over time using the HB98 model. `fitnesses` is the 
 `nuc_matrix` is the symmetric nucleotide substitution matrix, `alpha` is the synonymous rate, and `time` is the total time to evolve over.
 """
 function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matrix, alpha, time;
-        genetic_code = MolecularEvolution.universal_code, push_into = nothing)
+        genetic_code = MolecularEvolution.universal_code, push_into = nothing, logNe = nothing, time_origin = 0.0)
+    if isnothing(logNe)
+        transform = identity
+    else
+        transform = x -> x .* exp(logNe) .* 2
+    end
     codon_jumps = 0
     fitness_jumps = 0
     current_fits = copy(fitnesses)
     current_codon = codon
     t = 0.0
     next_event = 0.0
-    while t+next_event < time
-        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, current_fits .+ scaled_fitness_model.offsets, scaled_fitness_model.codon_offsets, genetic_code=genetic_code)
+    while t < time
+        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, transform(current_fits .+ scaled_fitness_model.offsets), transform(scaled_fitness_model.codon_offsets), genetic_code=genetic_code)
         sum_HBrow = sum(HBrow)
         rOU,rHB = (scaled_fitness_model.event_rate,sum_HBrow)
         total_rate = rOU+rHB
@@ -189,9 +195,13 @@ function jumpy_HB_codon_evolve(fitnesses, codon, scaled_fitness_model, nuc_matri
                 codon_jumps += 1
                 current_codon = sample(1:length(HBrow),Weights(HBrow))
             end
-        end
-        if !isnothing(push_into)
-            push!(push_into,(t,current_codon,copy(current_fits)))
+            if !isnothing(push_into)
+                if !isnothing(logNe)
+                    push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits)),logNe))
+                else
+                    push!(push_into,(time_origin+t,current_codon,transform(copy(current_fits))))
+                end
+            end
         end
     end
     return current_fits, current_codon, codon_jumps, fitness_jumps
@@ -506,52 +516,52 @@ end
 # 2) One site at a time, sample the fitness jumps and codon substitutions between each Ne jump event
 # ShiftingNeHBSimModel and ShiftingNeHBSimPartition are commented out until this works.
 """
-    jumpy_NeHB_codon_evolve(fitnesses, logNe, codon, fitness_model, logNe_model, nuc_matrix, alpha, time;
+    jumpy_NeHB_codon_evolve(fitnesses, logNe_trajectory, codon, fitness_model, nuc_matrix, alpha;
     genetic_code = MolecularEvolution.universal_code, push_into = nothing)
 
-Evolves codons, unscaled site-fitness, and log-pop-size together.
+Evolves codons and unscaled site-fitness, along with a given trajectory of log-pop-size.
 """
-function jumpy_NeHB_codon_evolve(fitnesses, logNe, codon, fitness_model, logNe_model, nuc_matrix, alpha, time;
+function jumpy_NeHB_codon_evolve(fitnesses, logNe_trajectory, codon, fitness_model, nuc_matrix, alpha;
     genetic_code = MolecularEvolution.universal_code, push_into = nothing)
     codon_jumps = 0
     fitness_jumps = 0
-    logNe_jumps = 0
     current_fits = copy(fitnesses)
     current_codon = codon
+    t = 0.0
+    for (next_event, current_logNe) in logNe_trajectory
+        current_fits, current_codon, local_codon_jumps, local_fitness_jumps = jumpy_HB_codon_evolve(current_fits, current_codon, fitness_model, nuc_matrix, alpha, next_event; genetic_code = genetic_code, push_into = push_into, logNe = current_logNe, time_origin = t)
+        t = t+next_event
+        codon_jumps += local_codon_jumps
+        fitness_jumps += local_fitness_jumps
+        if !isnothing(push_into)
+            push!(push_into,(t,current_codon,copy(current_fits) .* exp(current_logNe) .* 2,current_logNe))
+        end
+    end
+    return logNe_trajectory[end][2], current_fits, current_codon, codon_jumps, fitness_jumps, length(logNe_trajectory)-1
+end
+
+
+function jumpy_Ne(logNe, logNe_model, time)
     current_logNe = logNe
     t = 0.0
     next_event = 0.0
-    while t+next_event < time
-        HBrow = HB98AA_row(current_codon, alpha, nuc_matrix, (current_fits .+ fitness_model.offsets) .* exp(current_logNe) .* 2, fitness_model.codon_offsets .* exp(current_logNe) .* 2, genetic_code=genetic_code)
-        sum_HBrow = sum(HBrow)
-        rOU, rNe, rHB = (fitness_model.event_rate, logNe_model.event_rate, sum_HBrow)
-        total_rate = rOU+rHB+rNe
-        next_event = randexp()/total_rate
+    logNe_trajectory = Vector{Tuple{Float64, Float64}}()
+    while t < time
+        next_event = randexp()/logNe_model.event_rate
         t = t+next_event
         if t < time
-            event_index = sample(1:3,Weights([rOU,rNe,rHB])) 
-            if event_index == 1 # Fitness jump event
-                fitness_jumps += 1
-                current_fits = jump(current_fits, fitness_model)
-            elseif event_index == 2 # pop-size jump event
-                logNe_jumps += 1
-                current_logNe = jump(current_logNe, logNe_model)
-            else # Codon substitution event
-                codon_jumps += 1
-                current_codon = sample(1:length(HBrow),Weights(HBrow))
-            end
-        end
-        if !isnothing(push_into)
-            push!(push_into,(t,current_codon,copy(current_fits),current_logNe))
+            push!(logNe_trajectory, (next_event, current_logNe))
+            current_logNe = jump(current_logNe, logNe_model)
         end
     end
-    return current_logNe, current_fits, current_codon, codon_jumps, fitness_jumps, logNe_jumps
+    push!(logNe_trajectory, (time - (t - next_event), current_logNe))
+    return logNe_trajectory
 end
 
 """
     shiftingNeHBviz(T, f_event_rate, f_σ, f_mixing_rate, logNe_event_rate, logNe_σ, logNe_mean, logNe_mixing_rate, alpha, nucm; T0 = -20)
 
-Visualize the fitness trajectory, codon frequencies, and expected dN/dS over time for a shifting Ne HB process.
+Visualize the Ne trajectory, fitness trajectory, codon frequencies, and expected dN/dS over time for a shifting Ne HB process.
 """
 function shiftingNeHBviz(T, f_event_rate, f_σ, f_mixing_rate, logNe_event_rate, logNe_σ, logNe_mean, logNe_mixing_rate, alpha, nucm; T0 = -20)
     fs = randn(20) .* f_σ
@@ -560,14 +570,19 @@ function shiftingNeHBviz(T, f_event_rate, f_σ, f_mixing_rate, logNe_event_rate,
     log_ne_ou = PiecewiseOUModel(logNe_event_rate, logNe_σ, logNe_mixing_rate, logNe_mean, 0.0, 0.0)
     coll = []
     codon = sample(1:61, Weights(HB98AA_eqfreqs(fs .* exp(logNe) .* 2)))
-    CodonMolecularEvolution.jumpy_NeHB_codon_evolve(fs, logNe, codon, f_ou, log_ne_ou, nucm, alpha,  T-T0, push_into = coll)
+    logNe_trajectory = jumpy_Ne(logNe, log_ne_ou, T-T0)
+    jumpy_NeHB_codon_evolve(fs, logNe_trajectory, codon, f_ou, nucm, alpha, push_into = coll)
     prepend!(coll, [(0.0, codon, fs, logNe)])
     ts = [c[1] for c in coll] .+ T0
     fst = [c[3] .* exp(c[4]) .* 2 for c in coll] #2Ne*s
-    return HBviz(ts, fst, T, alpha, nucm)
+    p = HBviz(ts, fst, T, alpha, nucm)
+
+    prezero = findlast(ts .<= 0)
+    prezero = prezero == nothing ? 1 : prezero
+    pl4 = plot(ts[prezero:end], exp.([c[4] for c in coll[prezero:end]]), ylabel = L"Ne", legend = :none, color = "black", xtickfontcolor = RGBA(0,0,0,0), bottom_margin = -12Plots.mm, xlim = (0, T))
+    return plot(pl4, p, layout = grid(2, 1, heights = 1/4 .*[1,3]), link=:x, margins = 8Plots.mm, plot_layout = :tight, widen=false, tickdirection=:out)
 end
 
-#=
 
 mutable struct ShiftingNeHBSimModel <: MolecularEvolution.SimulationModel
     sites::Int64
@@ -642,18 +657,23 @@ function ShiftingNeHBSimPartition(
     end
 
     # 3) pick initial codons (arbitrary, say the first sense codon)
-    c_init = [rand(1:length(model.code.sense_codons)) for i in 1:model.sites]
+    codons = [rand(1:length(model.code.sense_codons)) for i in 1:model.sites]
 
     # 4) "burn in" by evolving over burnin_time
     #jumpy_NeHB_codon_evolve(fitnesses, logNe, codon, fitness_model, logNe_model, nuc_matrix, alpha, time
-    new_logNe, new_fits, new_codons, _, _, _ = jumpy_NeHB_codon_evolve(
-        fits, lp, c_init, model.unscaled_ou_params, model.logNe_model, model.nuc_matrix, model.alphas, burnin_time, genetic_code = model.code)
+    logNe_trajectory = jumpy_Ne(lp, model.logNe_model, burnin_time)
+    for (i,m) in enumerate(model.unscaled_ou_params)
+        _, f, c, _, _ = jumpy_NeHB_codon_evolve(fits[:,i], logNe_trajectory, codons[i], m, model.nuc_matrix, model.alphas[i], genetic_code = model.code)
+        fits[:,i] .= f
+        codons[i] = c
+    end
+    logNe = logNe_trajectory[end][2]
 
     return ShiftingNeHBSimPartition(
         model.sites,
-        new_logNe,
-        new_fits,
-        new_codons,
+        logNe,
+        fits,
+        codons,
         model.code
     )
 end
@@ -685,20 +705,24 @@ function MolecularEvolution.forward!(
     node::FelNode
 )
     bl = node.branchlength
-    new_lp, new_fits, new_codons, _, _, _ = jumpy_NeHB_codon_evolve(
-        copy(source.fitnesses),
-        source.logNe,
-        copy(source.codons),
-        model.unscaled_ou_params,
-        model.logNe_model,
-        model.nuc_matrix,
-        model.alphas,
-        bl;
-        genetic_code = model.code
-    )
-
-    dest.logNe = new_lp
-    dest.fitnesses .= new_fits
-    dest.codons .= new_codons
+    logNe_trajectory = jumpy_Ne(source.logNe, model.logNe_model, bl)
+    logNe = logNe_trajectory[end][2]
+    for site in 1:model.sites
+        fitnesses = source.fitnesses[:,site]
+        codon = source.codons[site]
+        unscaled_ou_model = model.unscaled_ou_params[site]
+        alpha = model.alphas[site]
+        _, fitnesses, codon, _, _, _ = jumpy_NeHB_codon_evolve(
+            fitnesses,
+            logNe_trajectory,
+            codon,
+            unscaled_ou_model,
+            model.nuc_matrix,
+            alpha;
+            genetic_code = model.code
+        )
+        dest.fitnesses[:,site] .= fitnesses
+        dest.codons[site] = codon
+    end
+    dest.logNe = logNe
 end
-=#
