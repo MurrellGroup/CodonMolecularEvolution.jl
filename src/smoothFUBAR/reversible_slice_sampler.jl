@@ -91,7 +91,7 @@ function reversible_slice_sampling(model::ReversibleSliceSampler; n_samples=1000
             push!(model_indicies, current_model_index)
             push!(logposterios, ℓπ(current_θ))
        else 
-            current_θ = sample_within_model(model, current_θ, current_model_index)
+            current_θ = sample_within_model(model, current_θ, current_model_index, jump_proposal_probability)
             push!(samples, current_θ)
             push!(model_indicies, current_model_index)
             push!(logposterios, ℓπ(current_θ))
@@ -100,8 +100,11 @@ function reversible_slice_sampling(model::ReversibleSliceSampler; n_samples=1000
     return samples, model_indicies, logposterios
 end
 
-function sample_within_model(sampler::ReversibleSliceSampler, θ::Vector{Float64}, current_model_index::Int64)
+function sample_within_model(sampler::ReversibleSliceSampler, θ::Vector{Float64}, current_model_index::Int64, model_switching_probability::Float64)
     ESS_model = sampler.ESS_models[current_model_index]
     ESS_state = ESSState(θ, sampler.loglikelihood(θ))
-    return AbstractMCMC.step(Random.default_rng(), ESS_model, ESS(), ESS_state)[1]
+    n_samples = rand(Geometric(model_switching_probability)) + 1
+    result = AbstractMCMC.sample(Random.default_rng(), ESS_model, ESS(),n_samples, initial_state = ESS_state)
+    println(result)
+    return result[1]
 end
