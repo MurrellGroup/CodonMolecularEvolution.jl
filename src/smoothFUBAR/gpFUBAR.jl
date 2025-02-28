@@ -538,25 +538,25 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
 
     # Benchmark the log density calculation
     # We need to call the function directly on a random input
-    random_input = randn(problem.dimension + 2)
-    @btime LogDensityProblems.logdensity($log_posterior, $random_input)
+    # random_input = randn(problem.dimension + 2)
+    # @btime LogDensityProblems.logdensity($log_posterior, $random_input)
     
     # Create the AD gradient model
     ad_model = LogDensityProblemsAD.ADgradient(Val(:Zygote), log_posterior)
 
     # Benchmark the gradient calculation
-    @btime Zygote.gradient($log_posterior, $random_input)
+    # @btime Zygote.gradient($log_posterior, $random_input)
     
-    # model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:ForwardDiff), log_posterior))
-    # δ = 0.8
-    # sampler = NUTS(δ)
-    # AdvancedHMC.ProgressMeter.ijulia_behavior(:clear)
-    # samples = AbstractMCMC.sample(
-    #     model,
-    #     sampler,
-    #     n_samples;
-    #     initial_params=randn(problem.dimension + 2),
-    # )
-    # return samples
+    model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:Zygote), log_posterior))
+    δ = 0.8
+    sampler = NUTS(δ)
+    AdvancedHMC.ProgressMeter.ijulia_behavior(:clear)
+    samples = AbstractMCMC.sample(
+        model,
+        sampler,
+        n_samples;
+        initial_params=randn(problem.dimension + 2),
+    )
+    return samples
     # Define the log posterior function
 end
