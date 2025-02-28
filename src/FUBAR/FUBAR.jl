@@ -14,11 +14,11 @@ end
 
 
 function gridplot(alpha_ind_vec,beta_ind_vec,grid_values,θ; title = "")
-    scatter(alpha_ind_vec,beta_ind_vec, zcolor = θ, c = :darktest, colorbar = false,
-    markersize = sqrt(length(alpha_ind_vec))/3.5, markershape=:square, markerstrokewidth=0.0, size=(350,350),
+    scatter(alpha_ind_vec,beta_ind_vec, zcolor = θ, c = :darktest, 
+    markersize = sqrt(length(alpha_ind_vec))/3.5, markershape=:square, markerstrokewidth=0.0, size=(400,350),
     label = :none, xticks = (1:length(grid_values), round.(grid_values,digits = 3)), xrotation = 90,
     yticks = (1:length(grid_values), round.(grid_values,digits = 3)), margin=6Plots.mm,
-    xlabel = "α", ylabel = "β", title = title)
+    xlabel = "α", ylabel = "β", title = title, colorbar = true, right_margin = 12Plots.mm)
     plot!(1:length(grid_values),1:length(grid_values),color = "grey", style = :dash, label = :none)
 end
 

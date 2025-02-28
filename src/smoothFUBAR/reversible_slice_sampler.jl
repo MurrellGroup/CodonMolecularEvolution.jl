@@ -81,7 +81,6 @@ function reversible_slice_sampling(model::ReversibleSliceSampler; n_samples=1000
             proposed_θ, proposed_model_index, correction_factor = generate_jump_proposal(current_model_index, current_θ, model)
             likelihood_ratio = model.loglikelihood(proposed_θ) - model.loglikelihood(current_θ)
             prior_ratio = log(model.model_priors[proposed_model_index]) - log(model.model_priors[current_model_index])
-            # We need the Metropolis-Hastings-Green ratio, which will according to GPT just be likelihood ratio + model prior ratio
             metropolis_hastings_green_ratio = likelihood_ratio + prior_ratio + correction_factor    
             if log(rand()) < metropolis_hastings_green_ratio
                 current_θ = proposed_θ
@@ -91,7 +90,7 @@ function reversible_slice_sampling(model::ReversibleSliceSampler; n_samples=1000
             push!(model_indicies, current_model_index)
             push!(logposterios, ℓπ(current_θ))
        else 
-            current_θ = sample_within_model(model, current_θ, current_model_index, jump_proposal_probability)
+            current_θ = sample_within_model(model, current_θ, current_model_index)
             push!(samples, current_θ)
             push!(model_indicies, current_model_index)
             push!(logposterios, ℓπ(current_θ))
@@ -100,11 +99,9 @@ function reversible_slice_sampling(model::ReversibleSliceSampler; n_samples=1000
     return samples, model_indicies, logposterios
 end
 
-function sample_within_model(sampler::ReversibleSliceSampler, θ::Vector{Float64}, current_model_index::Int64, model_switching_probability::Float64)
+function sample_within_model(sampler::ReversibleSliceSampler, θ::Vector{Float64}, current_model_index::Int64)
     ESS_model = sampler.ESS_models[current_model_index]
     ESS_state = ESSState(θ, sampler.loglikelihood(θ))
-    n_samples = rand(Geometric(model_switching_probability)) + 1
-    result = AbstractMCMC.sample(Random.default_rng(), ESS_model, ESS(),n_samples, initial_state = ESS_state)
-    println(result)
-    return result[1]
+    result = AbstractMCMC.step(Random.default_rng(), ESS_model, ESS(), ESS_state)[1]
+    return result
 end

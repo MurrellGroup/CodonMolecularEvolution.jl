@@ -40,5 +40,7 @@ export
     plot_logposteriors_with_transitions,
     gridplot,
     gpFUBAR,
-    compute_rjess_to_fubar_permutation
+    compute_rjess_to_fubar_permutation,
+    non_rj_gpFUBAR,
+    kernel_sampling_non_rj_gpFUBAR
 end
