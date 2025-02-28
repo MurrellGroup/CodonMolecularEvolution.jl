@@ -577,7 +577,10 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
     θ_samples = [samples[i].z.θ for i in eachindex(samples)]
     c_samples = [θ_samples[i][end] for i in eachindex(θ_samples)]
     supression_samples = [θ_samples[i][end-1] for i in eachindex(θ_samples)]
-
+    
+    # Calculate log likelihood for each sample
+    log_likelihoods = Float64[]
+    
     # Define dimensions, αs, and βs for suppression vector calculation
     dimensions = accumulate((x, i) -> x + (20 - i), 0:(20-1); init=190) #Hard coded 20,190 for now
     αs = 0.1 .* [i for i in 0:(length(dimensions)-1)]
@@ -597,6 +600,10 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
         # Convert to FUBAR format
         fubar_sample = compute_rjess_to_fubar_permutation(suppressed, N)
         push!(fubar_samples, fubar_sample)
+        
+        # Calculate log likelihood for this sample
+        ll = supression_loglikelihood(problem, full_params, αs, βs, dimensions)
+        push!(log_likelihoods, ll)
     end
     
     # Calculate posterior mean using all samples
@@ -630,15 +637,25 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
         legend=false
     )
     
+    # 3. Log likelihood plot
+    log_likelihood_plot = plot(
+        log_likelihoods,
+        title="Log Likelihood",
+        xlabel="Iteration",
+        ylabel="Log Likelihood",
+        legend=false
+    )
+    
     # Combine trace plots
     trace_plots = plot(
         c_trace_plot, 
         suppression_trace_plot,
-        layout=(2, 1),
-        size=(800, 600)
+        log_likelihood_plot,
+        layout=(3, 1),
+        size=(800, 900)
     )
     
-    # 3. Create animation of samples
+    # 4. Create animation of samples
     # Use all samples for animation (or a reasonable number if there are too many)
     max_frames = min(n_samples, 100)  # Cap at 100 frames for reasonable file size
     frame_indices = n_samples <= max_frames ? (1:n_samples) : round.(Int, range(1, n_samples, length=max_frames))
@@ -653,7 +670,7 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
         )
     end
     
-    # 4. Calculate Bayes factor based on suppression parameter
+    # 5. Calculate Bayes factor based on suppression parameter
     # Positive suppression parameter indicates evidence for selection
     positive_count = sum(supression_samples .> 0.0)
     negative_count = sum(supression_samples .< 0.0)
@@ -665,5 +682,5 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
         println("Bayes factor (positive/negative): ", bayes_factor)
     end
     
-    return posterior_mean_plot, trace_plots, anim, (c_samples=c_samples, suppression_samples=supression_samples)
+    return posterior_mean_plot, trace_plots, anim, (c_samples=c_samples, suppression_samples=supression_samples, log_likelihoods=log_likelihoods)
 end
