@@ -128,16 +128,18 @@ function kernel_matrix(grid; distance_function=x -> exp(-x))
     return distances
 end
 
-# First define the function itself
+# Optimize kernel_matrix_c for better performance
 function kernel_matrix_c(grid::FUBARgrid, c::Real)
     n_points = length(grid.alpha_ind_vec)
     K = zeros(eltype(grid.grid_values), n_points, n_points)
-    for i in 1:n_points
+    inv_2c_squared = 1.0 / (2 * c^2)  # Precompute this value
+
+    @inbounds for i in 1:n_points
         for j in 1:n_points
             # Calculate distance using alpha_ind_vec and beta_ind_vec like in kernel_matrix
             distance = (grid.alpha_ind_vec[i] - grid.alpha_ind_vec[j])^2 +
                        (grid.beta_ind_vec[i] - grid.beta_ind_vec[j])^2
-            K[i, j] = exp(-distance / (2 * c^2))
+            K[i, j] = exp(-distance * inv_2c_squared)
         end
     end
     return K
@@ -148,7 +150,7 @@ Zygote.@adjoint function kernel_matrix_c(grid::FUBARgrid, c::Real)
     n_points = length(grid.alpha_ind_vec)
     K = zeros(eltype(grid.grid_values), n_points, n_points)
     D = zeros(eltype(grid.grid_values), n_points, n_points)  # store distances for the backward pass
-    
+
     for i in 1:n_points
         for j in 1:n_points
             # Calculate distance using alpha_ind_vec and beta_ind_vec
@@ -158,7 +160,7 @@ Zygote.@adjoint function kernel_matrix_c(grid::FUBARgrid, c::Real)
             K[i, j] = exp(-distance / (2 * c^2))
         end
     end
-    
+
     function kernel_matrix_c_pullback(dK)
         # Instead of using zero(grid), we'll return nothing for the grid gradient
         # since we're not differentiating with respect to the grid
@@ -172,7 +174,7 @@ Zygote.@adjoint function kernel_matrix_c(grid::FUBARgrid, c::Real)
         end
         return (nothing, grad_c)
     end
-    
+
     return K, kernel_matrix_c_pullback
 end
 
@@ -355,24 +357,25 @@ function smoothing_function_prime(y, α, β)
     return α * s / (1 + s)^2
 end
 
-# Original supress_vector function.
+# Optimize supress_vector for better performance
 function supress_vector(θ, αs, βs, dimensions, smoothing_function)
     T = eltype(θ)
-    grid_θ = θ[1:end-1]
+    grid_θ = @view θ[1:end-1]  # Use view instead of copying
     y = θ[end]
-    
+
     s = softmax(grid_θ)
     M = ones(T, length(s))
-    for i in 2:length(dimensions)
+
+    @inbounds for i in 2:length(dimensions)
         start_index = dimensions[i-1] + 1
         end_index = dimensions[i]
         f_i = smoothing_function(y, αs[i], βs[i])
         M[start_index:end_index] .= f_i
     end
+
     A = s .* M
     T_sum = sum(A)
-    z = A ./ T_sum
-    return z
+    return A ./ T_sum
 end
 
 # Custom adjoint for supress_vector.
@@ -380,7 +383,7 @@ Zygote.@adjoint function supress_vector(θ, αs, βs, dimensions, smoothing_func
     T = eltype(θ)
     grid_θ = θ[1:end-1]
     y = θ[end]
-    
+
     s = softmax(grid_θ)
     M = ones(T, length(s))
     for i in 2:length(dimensions)
@@ -392,20 +395,20 @@ Zygote.@adjoint function supress_vector(θ, αs, βs, dimensions, smoothing_func
     A = s .* M
     T_sum = sum(A)
     z = A ./ T_sum
-    
+
     function pullback(dz)
         # Propagate through the normalization: z = A / T_sum.
         sum_dz = sum(dz)
         dA = dz ./ T_sum .- (sum_dz / T_sum^2) .* A
-        
+
         # Split the gradient: A = s .* M.
         ds = dA .* M
         dM = dA .* s
-        
+
         # Compute gradient for softmax input:
         dot_ds_s = sum(ds .* s)
         dgrid = s .* (ds .- dot_ds_s)
-        
+
         # Compute gradient with respect to y via dM, affecting only groups 2:end.
         dy = zero(y)
         for i in 2:length(dimensions)
@@ -414,15 +417,15 @@ Zygote.@adjoint function supress_vector(θ, αs, βs, dimensions, smoothing_func
             fprime = smoothing_function_prime(y, αs[i], βs[i])
             dy += fprime * sum(dM[start_index:end_index])
         end
-        
+
         dθ = similar(θ)
         dθ[1:end-1] .= dgrid
         dθ[end] = dy
-        
+
         # Return gradients for all arguments: only θ is differentiated.
         return (dθ, nothing, nothing, nothing, nothing)
     end
-    
+
     return z, pullback
 end
 
@@ -483,7 +486,11 @@ struct LogPosteriorRJGP
     dimensions::Vector{Int64}
     c_prior::Distribution
     suppression_σ::Float64
-    fubar_to_ess_perm::Vector{Int64}  # Store the permutation vector
+    fubar_to_ess_perm::Vector{Int64}
+    # Add caching fields
+    last_c::Ref{Float64}
+    cached_kernel::Ref{Matrix{Float64}}
+    cached_cholesky::Ref{Any}  # Will store Cholesky decomposition
 end
 
 function initialise_log_posterior_rjgp(model::RJGPModel, c_prior::Distribution, suppression_σ::Float64)
@@ -492,36 +499,54 @@ function initialise_log_posterior_rjgp(model::RJGPModel, c_prior::Distribution, 
     βs = 0.1 .* [i for i in 1:(length(dimensions))]
     # Pre-compute the permutation
     fubar_to_ess_perm = get_fubar_to_ess_permutation(Int64(sqrt(model.dimension)))
-    return LogPosteriorRJGP(model, αs, βs, dimensions, c_prior, suppression_σ, fubar_to_ess_perm)
+
+    # Initialize with NaN to ensure first calculation
+    initial_c = -1.0
+    initial_kernel = zeros(model.dimension, model.dimension)
+
+    return LogPosteriorRJGP(
+        model, αs, βs, dimensions, c_prior, suppression_σ, fubar_to_ess_perm,
+        Ref(initial_c), Ref(initial_kernel), Ref{Any}(nothing)
+    )
 end
 
-# θ will have dimensions + 2 elements
+# Optimized log density function
 function (problem::LogPosteriorRJGP)(θ)
     c = θ[end]
-    # The non-kernel part of the problem
-    non_kernel_θ = θ[1:(end-1)]
+    non_kernel_θ = @view θ[1:(end-1)]
 
+    # Calculate log likelihood
     log_likelihood = supression_loglikelihood(problem.model, non_kernel_θ, problem.αs, problem.βs, problem.dimensions)
 
-    # Generate the kernel matrix with the current c value
-    raw_kernel_Σ = kernel_matrix_c(problem.model.grid, c)
+    # Only recompute kernel if c has changed
+    if c != problem.last_c[]
+        # Generate the kernel matrix with the current c value
+        raw_kernel_Σ = kernel_matrix_c(problem.model.grid, c)
 
-    # Apply the permutation directly instead of calling rearrange_kernel_matrix
-    kernel_Σ = raw_kernel_Σ[problem.fubar_to_ess_perm, problem.fubar_to_ess_perm]
+        # Apply the permutation
+        kernel_Σ = raw_kernel_Σ[problem.fubar_to_ess_perm, problem.fubar_to_ess_perm]
 
-    # Use the same type as the input for creating matrices
-    T = eltype(θ)
-    
-    # Add regularization directly with identity matrix
-    ϵ = convert(T, 1e-6)
-    kernel_Σ += ϵ * I
-    
+        # Add regularization
+        ϵ = 1e-6
+        kernel_Σ += ϵ * I
 
+        # Cache the kernel and its Cholesky decomposition
+        problem.cached_kernel[] = kernel_Σ
+        problem.cached_cholesky[] = cholesky(Symmetric(kernel_Σ))
+        problem.last_c[] = c
+    end
+
+    # Use cached Cholesky for log density calculation
     c_log_prior = logpdf(problem.c_prior, c)
-    
-    # Calculate the log prior directly without try-catch
-    non_kernel_log_prior = logpdf(MvNormal(zeros(T, problem.model.dimension), kernel_Σ), non_kernel_θ[1:(end-1)]) + logpdf(Normal(0, problem.suppression_σ), c)
-    
+
+    # Use the cached Cholesky decomposition for faster MvNormal logpdf
+    chol = problem.cached_cholesky[]
+    non_kernel_log_prior = -0.5 * (
+        problem.model.dimension * log(2π) +
+        logdet(chol) +
+        dot(non_kernel_θ[1:(end-1)], chol \ non_kernel_θ[1:(end-1)])
+    ) + logpdf(Normal(0, problem.suppression_σ), non_kernel_θ[end])
+
     return log_likelihood + c_log_prior + non_kernel_log_prior
 end
 
@@ -531,22 +556,14 @@ LogDensityProblems.capabilities(::Type{LogPosteriorRJGP}) = LogDensityProblems.L
 
 
 
-function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prior_only=false, diagnostics=false, sample_c=true, c_step_size=0.01, c_initial=2.0, supression_σ=1.0)
-
+function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prior_only=false, diagnostics=false,
+    sample_c=true, c_step_size=0.01, c_initial=2.0, supression_σ=1.0)
     # Create the log posterior problem instance
     log_posterior = initialise_log_posterior_rjgp(problem, Normal(2, 0.25), supression_σ)
 
-    # Benchmark the log density calculation
-    # We need to call the function directly on a random input
-    # random_input = randn(problem.dimension + 2)
-    # @btime LogDensityProblems.logdensity($log_posterior, $random_input)
-    
     # Create the AD gradient model
     ad_model = LogDensityProblemsAD.ADgradient(Val(:Zygote), log_posterior)
 
-    # Benchmark the gradient calculation
-    # @btime Zygote.gradient($log_posterior, $random_input)
-    
     model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:Zygote), log_posterior))
     δ = 0.8
     sampler = NUTS(δ)
@@ -557,6 +574,96 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
         n_samples;
         initial_params=randn(problem.dimension + 2),
     )
-    return samples
-    # Define the log posterior function
+    θ_samples = [samples[i].z.θ for i in eachindex(samples)]
+    c_samples = [θ_samples[i][end] for i in eachindex(θ_samples)]
+    supression_samples = [θ_samples[i][end-1] for i in eachindex(θ_samples)]
+
+    # Define dimensions, αs, and βs for suppression vector calculation
+    dimensions = accumulate((x, i) -> x + (20 - i), 0:(20-1); init=190) #Hard coded 20,190 for now
+    αs = 0.1 .* [i for i in 0:(length(dimensions)-1)]
+    βs = 0.1 .* [i for i in 1:(length(dimensions))]
+
+    # Process samples to get grid values in FUBAR format
+    grid_θ_samples = [θ_samples[i][1:(end-2)] for i in eachindex(θ_samples)]
+    
+    # Calculate suppressed vectors and convert to FUBAR format
+    N = Int64(sqrt(problem.dimension))
+    fubar_samples = []
+    for i in eachindex(grid_θ_samples)
+        # Create full parameter vector with suppression parameter
+        full_params = [grid_θ_samples[i]; supression_samples[i]]
+        # Calculate suppressed vector
+        suppressed = supress_vector(full_params, αs, βs, dimensions, quintic_smooth_transition)
+        # Convert to FUBAR format
+        fubar_sample = compute_rjess_to_fubar_permutation(suppressed, N)
+        push!(fubar_samples, fubar_sample)
+    end
+    
+    # Calculate posterior mean using all samples
+    posterior_mean = mean(fubar_samples)
+    
+    # Create plots
+    
+    # 1. Posterior mean plot
+    posterior_mean_plot = gridplot(
+        problem.grid.alpha_ind_vec, 
+        problem.grid.beta_ind_vec,
+        problem.grid.grid_values, 
+        posterior_mean,
+        title="Posterior Mean"
+    )
+    
+    # 2. Parameter trace plots
+    c_trace_plot = plot(
+        c_samples,
+        title="Kernel Parameter (c)",
+        xlabel="Iteration",
+        ylabel="Value",
+        legend=false
+    )
+    
+    suppression_trace_plot = plot(
+        supression_samples,
+        title="Suppression Parameter",
+        xlabel="Iteration",
+        ylabel="Value",
+        legend=false
+    )
+    
+    # Combine trace plots
+    trace_plots = plot(
+        c_trace_plot, 
+        suppression_trace_plot,
+        layout=(2, 1),
+        size=(800, 600)
+    )
+    
+    # 3. Create animation of samples
+    # Use all samples for animation (or a reasonable number if there are too many)
+    max_frames = min(n_samples, 100)  # Cap at 100 frames for reasonable file size
+    frame_indices = n_samples <= max_frames ? (1:n_samples) : round.(Int, range(1, n_samples, length=max_frames))
+    
+    anim = @animate for i in frame_indices
+        gridplot(
+            problem.grid.alpha_ind_vec, 
+            problem.grid.beta_ind_vec, 
+            problem.grid.grid_values, 
+            fubar_samples[i],
+            title="Sample $i: c=$(round(c_samples[i], digits=2)), s=$(round(supression_samples[i], digits=2))"
+        )
+    end
+    
+    # 4. Calculate Bayes factor based on suppression parameter
+    # Positive suppression parameter indicates evidence for selection
+    positive_count = sum(supression_samples .> 0.0)
+    negative_count = sum(supression_samples .< 0.0)
+    bayes_factor = positive_count / max(1, negative_count)  # Avoid division by zero
+    
+    if diagnostics
+        println("Kernel parameter (c) mean: ", mean(c_samples))
+        println("Suppression parameter mean: ", mean(supression_samples))
+        println("Bayes factor (positive/negative): ", bayes_factor)
+    end
+    
+    return posterior_mean_plot, trace_plots, anim, (c_samples=c_samples, suppression_samples=supression_samples)
 end
