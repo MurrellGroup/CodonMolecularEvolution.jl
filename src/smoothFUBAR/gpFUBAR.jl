@@ -128,6 +128,54 @@ function kernel_matrix(grid; distance_function=x -> exp(-x))
     return distances
 end
 
+# First define the function itself
+function kernel_matrix_c(grid::FUBARgrid, c::Real)
+    n_points = length(grid.alpha_ind_vec)
+    K = zeros(eltype(grid.grid_values), n_points, n_points)
+    for i in 1:n_points
+        for j in 1:n_points
+            # Calculate distance using alpha_ind_vec and beta_ind_vec like in kernel_matrix
+            distance = (grid.alpha_ind_vec[i] - grid.alpha_ind_vec[j])^2 +
+                       (grid.beta_ind_vec[i] - grid.beta_ind_vec[j])^2
+            K[i, j] = exp(-distance / (2 * c^2))
+        end
+    end
+    return K
+end
+
+# Then define the adjoint for automatic differentiation
+Zygote.@adjoint function kernel_matrix_c(grid::FUBARgrid, c::Real)
+    n_points = length(grid.alpha_ind_vec)
+    K = zeros(eltype(grid.grid_values), n_points, n_points)
+    D = zeros(eltype(grid.grid_values), n_points, n_points)  # store distances for the backward pass
+    
+    for i in 1:n_points
+        for j in 1:n_points
+            # Calculate distance using alpha_ind_vec and beta_ind_vec
+            distance = (grid.alpha_ind_vec[i] - grid.alpha_ind_vec[j])^2 +
+                       (grid.beta_ind_vec[i] - grid.beta_ind_vec[j])^2
+            D[i, j] = distance
+            K[i, j] = exp(-distance / (2 * c^2))
+        end
+    end
+    
+    function kernel_matrix_c_pullback(dK)
+        # Instead of using zero(grid), we'll return nothing for the grid gradient
+        # since we're not differentiating with respect to the grid
+        grad_c = zero(c)
+        # For each element, accumulate the contribution to the derivative with respect to c.
+        # d/dc exp(-d/(2*c^2)) = exp(-d/(2*c^2)) * (d / c^3)
+        for i in 1:n_points
+            for j in 1:n_points
+                grad_c += dK[i, j] * K[i, j] * (D[i, j] / c^3)
+            end
+        end
+        return (nothing, grad_c)
+    end
+    
+    return K, kernel_matrix_c_pullback
+end
+
 # Fix 2: Update the model constructor
 function generate_RJGP_model(grid::FUBARgrid; kernel_scaling=1.0, purifying_prior=1 / 2)
     Σ = rearrange_kernel_matrix(gaussian_kernel_matrix(grid, kernel_scaling=kernel_scaling))
@@ -393,7 +441,7 @@ function (problem::LogPosteriorRJGP)(θ)
     log_likelihood = supression_loglikelihood(problem.model, non_kernel_θ, problem.αs, problem.βs, problem.dimensions)
 
     # Generate the kernel matrix with the current c value
-    raw_kernel_Σ = kernel_matrix(problem.model.grid, distance_function=x -> exp(-x / (2 * c^2)))
+    raw_kernel_Σ = kernel_matrix_c(problem.model.grid, c)
 
     # Apply the permutation directly instead of calling rearrange_kernel_matrix
     kernel_Σ = raw_kernel_Σ[problem.fubar_to_ess_perm, problem.fubar_to_ess_perm]
@@ -434,7 +482,7 @@ function kernel_sampling_non_rj_gpFUBAR(problem::RJGPModel; n_samples=1000, prio
     ad_model = LogDensityProblemsAD.ADgradient(Val(:Zygote), log_posterior)
 
     # Benchmark the gradient calculation
-    @btime ForwardDiff.gradient($log_posterior, $random_input)
+    @btime Zygote.gradient($log_posterior, $random_input)
     
     # model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:ForwardDiff), log_posterior))
     # δ = 0.8
