@@ -2,7 +2,7 @@ module CodonMolecularEvolution
 
 using FASTX, MolecularEvolution, Measures, Plots, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo, LaTeXStrings, Random
 using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, Interpolations, MCMCChains
-using PDMats
+using PDMats, BenchmarkTools, ForwardDiff
 abstract type difFUBARGrid end
 
 include("shared/shared.jl")
