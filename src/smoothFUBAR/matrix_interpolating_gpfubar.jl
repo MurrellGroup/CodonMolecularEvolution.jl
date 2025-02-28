@@ -110,10 +110,18 @@ function supression_loglikelihood(model::RJGPModel, θ, αs, βs, dimensions)
 end
 
 function get_interpolated_kernel_matrix(problem::MatrixInterpolatingGPFUBAR, kernel_matrix_indicator)
-    lower_matrix = Int64(max(1,floor(kernel_matrix_indicator)))
-    upper_matrix = Int64(max(2,min(length(problem.pre_computed_cholesky_matrices),ceil(kernel_matrix_indicator))))
-    t = kernel_matrix_indicator - lower_matrix
-    return interpolate_matricies(problem.pre_computed_cholesky_matrices[lower_matrix], problem.pre_computed_cholesky_matrices[upper_matrix], t)
+    # Clamp the indicator to valid range
+    clamped_indicator = clamp(kernel_matrix_indicator, 1.0, length(problem.pre_computed_cholesky_matrices))
+    
+    # Calculate lower and upper matrix indices
+    lower_matrix = Int64(floor(clamped_indicator))
+    upper_matrix = Int64(min(length(problem.pre_computed_cholesky_matrices), lower_matrix + 1))
+    
+    # Calculate interpolation parameter (always between 0 and 1)
+    t = clamped_indicator - lower_matrix
+    
+    return interpolate_matricies(problem.pre_computed_cholesky_matrices[lower_matrix], 
+                                problem.pre_computed_cholesky_matrices[upper_matrix], t)
 end
 
 function mvnormal_logpdf_cholesky(x, μ, L)
@@ -129,13 +137,14 @@ function mvnormal_logpdf_cholesky(x, μ, L)
     
     # Compute log PDF
     logpdf = -0.5 * (n * log(2π) + logdet_Σ + quad)
-
+    # logpdf = -0.5 * quad # Trying just the kernel
     return logpdf
 end
 
 function (problem::MatrixInterpolatingGPFUBAR)(θ)
     kernel_matrix_indicator = θ[end] # This is the parameter that controls which kernel matrix to use
     kernel_matrix = get_interpolated_kernel_matrix(problem, kernel_matrix_indicator)
+    # testing prior only sampling
     log_likelihood = supression_loglikelihood(problem.model, θ[1:(end-1)], problem.αs, problem.βs, problem.dimension)
     kernel_matrix_indicator_log_prior = logpdf(problem.kernel_matrix_indicator_prior, kernel_matrix_indicator)    
     grid_log_prior = mvnormal_logpdf_cholesky(θ[1:(end-1)], zeros(length(θ[1:(end-1)])), kernel_matrix)
@@ -146,7 +155,7 @@ LogDensityProblems.logdensity(problem::MatrixInterpolatingGPFUBAR, θ) = problem
 LogDensityProblems.dimension(problem::MatrixInterpolatingGPFUBAR) = problem.model.dimension + 2
 LogDensityProblems.capabilities(::Type{MatrixInterpolatingGPFUBAR}) = LogDensityProblems.LogDensityOrder{0}()
 
-function matrix_interpolating_gp_fubar_HMC_sample(model::RJGPModel, n_samples::Int64)
+function matrix_interpolating_gp_fubar_HMC_sample(model::RJGPModel, n_samples::Int64; diagnostics=false)
     dimensions = accumulate((x, i) -> x + (20 - i), 0:(20-1); init=190) #Hard coded 20,190 for now
     αs = 0.1 .* [i for i in 0:(length(dimensions)-1)]
     βs = 0.1 .* [i for i in 1:(length(dimensions))]
@@ -154,7 +163,6 @@ function matrix_interpolating_gp_fubar_HMC_sample(model::RJGPModel, n_samples::I
     fubar_to_ess_perm = get_fubar_to_ess_permutation(Int64(sqrt(model.dimension)))
 
     problem = MatrixInterpolatingGPFUBAR(model, αs, βs, 400, fubar_to_ess_perm, collect(0.5:0.01:2.0), 1.0)
-
 
     model = AdvancedHMC.LogDensityModel(LogDensityProblemsAD.ADgradient(Val(:Zygote), problem))
     δ = 0.8
@@ -165,5 +173,119 @@ function matrix_interpolating_gp_fubar_HMC_sample(model::RJGPModel, n_samples::I
         n_samples;
         initial_params=randn(problem.model.dimension + 2),
     )
-    return samples
+    
+    # Extract samples
+    θ_samples = [samples[i].z.θ for i in eachindex(samples)]
+    kernel_indicator_samples = [θ_samples[i][end] for i in eachindex(θ_samples)]
+    supression_samples = [θ_samples[i][end-1] for i in eachindex(θ_samples)]
+    
+    # Calculate log likelihood for each sample
+    log_likelihoods = Float64[]
+    
+    # Process samples to get grid values in FUBAR format
+    grid_θ_samples = [θ_samples[i][1:(end-2)] for i in eachindex(θ_samples)]
+    
+    # Calculate suppressed vectors and convert to FUBAR format
+    N = Int64(sqrt(problem.model.dimension))
+    fubar_samples = []
+    for i in eachindex(grid_θ_samples)
+        # Create full parameter vector with suppression parameter
+        full_params = [grid_θ_samples[i]; supression_samples[i]]
+        # Calculate suppressed vector
+        suppressed = supress_vector(full_params, αs, βs, dimensions)
+        # Convert to FUBAR format
+        fubar_sample = suppressed[problem.model.ess_to_fubar_perm]
+        push!(fubar_samples, fubar_sample)
+        
+        # Calculate log likelihood for this sample
+        ll = supression_loglikelihood(problem.model, full_params, αs, βs, dimensions)
+        push!(log_likelihoods, ll)
+    end
+    
+    # Calculate posterior mean using all samples
+    posterior_mean = mean(fubar_samples)
+    
+    # Create plots
+    
+    # 1. Posterior mean plot
+    posterior_mean_plot = gridplot(
+        problem.model.grid.alpha_ind_vec, 
+        problem.model.grid.beta_ind_vec,
+        problem.model.grid.grid_values, 
+        posterior_mean,
+        title="Posterior Mean"
+    )
+    
+    # 2. Parameter trace plots
+    kernel_indicator_trace_plot = plot(
+        kernel_indicator_samples,
+        title="Kernel Matrix Indicator",
+        xlabel="Iteration",
+        ylabel="Value",
+        legend=false
+    )
+    
+    suppression_trace_plot = plot(
+        supression_samples,
+        title="Suppression Parameter",
+        xlabel="Iteration",
+        ylabel="Value",
+        legend=false
+    )
+    
+    # 3. Log likelihood plot
+    log_likelihood_plot = plot(
+        log_likelihoods,
+        title="Log Likelihood",
+        xlabel="Iteration",
+        ylabel="Log Likelihood",
+        legend=false
+    )
+    
+    # Combine trace plots
+    trace_plots = plot(
+        kernel_indicator_trace_plot, 
+        suppression_trace_plot,
+        log_likelihood_plot,
+        layout=(3, 1),
+        size=(800, 900)
+    )
+    
+    # 4. Create animation of samples
+    # Use a subset of samples for animation to keep file size reasonable
+    max_frames = min(n_samples, 100)
+    frame_indices = n_samples <= max_frames ? (1:n_samples) : round.(Int, range(1, n_samples, length=max_frames))
+    
+    anim = @animate for i in frame_indices
+        c_value = problem.pre_determined_c[min(length(problem.pre_determined_c), 
+                                              max(1, Int(round(kernel_indicator_samples[i]))))]
+        gridplot(
+            problem.model.grid.alpha_ind_vec, 
+            problem.model.grid.beta_ind_vec, 
+            problem.model.grid.grid_values, 
+            fubar_samples[i],
+            title="Sample $i: c=$(round(c_value, digits=2)), s=$(round(supression_samples[i], digits=2))"
+        )
+    end
+    
+    # 5. Calculate Bayes factor based on suppression parameter
+    # Positive suppression parameter indicates evidence for selection
+    positive_count = sum(supression_samples .> 0.0)
+    negative_count = sum(supression_samples .< 0.0)
+    bayes_factor = positive_count / max(1, negative_count)  # Avoid division by zero
+    
+    if diagnostics
+        println("Kernel matrix indicator mean: ", mean(kernel_indicator_samples))
+        println("Corresponding c value: ", problem.pre_determined_c[min(length(problem.pre_determined_c), 
+                                                                      max(1, Int(round(mean(kernel_indicator_samples)))))])
+        println("Suppression parameter mean: ", mean(supression_samples))
+        println("Bayes factor (positive/negative): ", bayes_factor)
+    end
+    
+    return posterior_mean_plot, trace_plots, anim, (
+        kernel_indicator_samples=kernel_indicator_samples, 
+        suppression_samples=supression_samples, 
+        log_likelihoods=log_likelihoods,
+        fubar_samples=fubar_samples
+    )
 end
