@@ -345,23 +345,86 @@ function quintic_smooth_transition(x, alpha, beta)
     end
 end
 
-# Dimensions gives a vector of the models incremental dimensionality
+# Example smoothing function (logistic) and its derivative.
+function smoothing_function(y, α, β)
+    return 1 / (1 + exp(-α * (y - β)))
+end
+
+function smoothing_function_prime(y, α, β)
+    s = exp(-α * (y - β))
+    return α * s / (1 + s)^2
+end
+
+# Original supress_vector function.
 function supress_vector(θ, αs, βs, dimensions, smoothing_function)
     T = eltype(θ)
-    grid_θ = θ[1:(end-1)]
-    supression_parameter = θ[end]
-
-    softmax_grid_θ = softmax(grid_θ)
-
+    grid_θ = θ[1:end-1]
+    y = θ[end]
+    
+    s = softmax(grid_θ)
+    M = ones(T, length(s))
     for i in 2:length(dimensions)
         start_index = dimensions[i-1] + 1
         end_index = dimensions[i]
-        softmax_grid_θ[start_index:end_index] = softmax_grid_θ[start_index:end_index] .* smoothing_function(supression_parameter, αs[i], βs[i])
+        f_i = smoothing_function(y, αs[i], βs[i])
+        M[start_index:end_index] .= f_i
     end
-    return softmax_grid_θ ./ sum(softmax_grid_θ)
+    A = s .* M
+    T_sum = sum(A)
+    z = A ./ T_sum
+    return z
 end
 
-
+# Custom adjoint for supress_vector.
+Zygote.@adjoint function supress_vector(θ, αs, βs, dimensions, smoothing_function)
+    T = eltype(θ)
+    grid_θ = θ[1:end-1]
+    y = θ[end]
+    
+    s = softmax(grid_θ)
+    M = ones(T, length(s))
+    for i in 2:length(dimensions)
+        start_index = dimensions[i-1] + 1
+        end_index = dimensions[i]
+        f_i = smoothing_function(y, αs[i], βs[i])
+        M[start_index:end_index] .= f_i
+    end
+    A = s .* M
+    T_sum = sum(A)
+    z = A ./ T_sum
+    
+    function pullback(dz)
+        # Propagate through the normalization: z = A / T_sum.
+        sum_dz = sum(dz)
+        dA = dz ./ T_sum .- (sum_dz / T_sum^2) .* A
+        
+        # Split the gradient: A = s .* M.
+        ds = dA .* M
+        dM = dA .* s
+        
+        # Compute gradient for softmax input:
+        dot_ds_s = sum(ds .* s)
+        dgrid = s .* (ds .- dot_ds_s)
+        
+        # Compute gradient with respect to y via dM, affecting only groups 2:end.
+        dy = zero(y)
+        for i in 2:length(dimensions)
+            start_index = dimensions[i-1] + 1
+            end_index = dimensions[i]
+            fprime = smoothing_function_prime(y, αs[i], βs[i])
+            dy += fprime * sum(dM[start_index:end_index])
+        end
+        
+        dθ = similar(θ)
+        dθ[1:end-1] .= dgrid
+        dθ[end] = dy
+        
+        # Return gradients for all arguments: only θ is differentiated.
+        return (dθ, nothing, nothing, nothing, nothing)
+    end
+    
+    return z, pullback
+end
 
 
 function supression_loglikelihood(model::RJGPModel, θ, αs, βs, dimensions)
