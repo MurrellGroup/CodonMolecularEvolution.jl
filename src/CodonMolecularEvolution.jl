@@ -15,6 +15,7 @@ include("smoothFUBAR/smoothFUBAR.jl")
 include("smoothFUBAR/reversible_slice_sampler.jl")
 include("smoothFUBAR/gpFUBAR.jl")
 include("smoothFUBAR/matrix_interpolating_gpfubar.jl")
+include("smoothFUBAR/wierd_benjamin_trick.jl")
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 
@@ -43,5 +44,6 @@ export
     compute_rjess_to_fubar_permutation,
     non_rj_gpFUBAR,
     kernel_sampling_non_rj_gpFUBAR,
-    matrix_interpolating_gp_fubar_HMC_sample
+    matrix_interpolating_gp_fubar_HMC_sample,
+    ess_benjamin_trick
 end
