@@ -1,4 +1,3 @@
-
 """
     generate_ess_indices(N::Int)
 
@@ -126,22 +125,28 @@ function supress_vector(θ, αs, βs, dimensions)
     return A ./ T_sum
 end
 
-function benjamin_loglikelihood(model::RJGPModel,αs, βs, dimensions,fubar_to_ess, cholesky_factor, θ; ϵ = 1e-6) 
-    #c = 2 # Standard kernel bandwith
-    c = exp(θ[end] / 2) # Kernel scaling factor, ⟹ c is sampled as lognormal. Ugly /2 trick to make it not go crazy out of bounds
-    grid_θ = θ[1:(end-2)]
-    Σ = kernel_matrix_c(model.grid, c)[fubar_to_ess, fubar_to_ess]
-    # Σ = model.Σ# [fubar_to_ess, fubar_to_ess] # Since we are testing a constant kernel bw we don't have to recompute
-    transformed_grid_θ = zeros(length(grid_θ) + 1)
-
-    regularised_Σ = 1/2 * (Σ + Σ') + ϵ * I
-
-    transformed_grid_θ[1:(end-1)] = cholesky(regularised_Σ).L * grid_θ
-    # transformed_grid_θ[1:(end-1)] = cholesky_factor * grid_θ
-    transformed_grid_θ[end] = θ[(end-1)] # Supression parameter
-
+function benjamin_loglikelihood(model::RJGPModel, αs, βs, dimensions, fubar_to_ess, cholesky_factor, θ; ϵ = 1e-2) 
+    # Extract parameters
+    grid_θ = @view θ[1:(end-2)]  # Use view instead of copying
+    y = θ[end-1]  # Suppression parameter
+    c = exp(θ[end] / 2)  # Kernel scaling factor
+    
+    # Compute kernel matrix and regularize
+    Σ = kernel_matrix_c(model.grid, c)
+    Σ = Σ[fubar_to_ess, fubar_to_ess]
+    regularised_Σ = Symmetric(Σ) + ϵ * I  # Use Symmetric for better performance
+    
+    # Transform parameters
+    L = cholesky(regularised_Σ).L
+    transformed_grid_θ = zeros(eltype(θ), length(grid_θ) + 1)
+    transformed_grid_θ[1:(end-1)] = L * grid_θ  # Revert to standard multiplication
+    transformed_grid_θ[end] = y
+    
+    # Apply suppression and compute log-likelihood
     supressed_grid_θ = supress_vector(transformed_grid_θ, αs, βs, dimensions)
-    return sum(log.(supressed_grid_θ[model.ess_to_fubar_perm]'model.grid.cond_lik_matrix))
+    
+    # Keep the original matrix multiplication logic
+    return sum(log.(supressed_grid_θ[model.ess_to_fubar_perm]' * model.grid.cond_lik_matrix))
 end
 
 function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = false)
@@ -197,7 +202,7 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
     raw_posterior_mean = mean(samples[1:100:end])
     
     # Create animation showing effect of different kernel bandwidths
-    bandwidth_anim = @animate for c in 0.5:0.5:10.0
+    bandwidth_anim = @animate for c in 1.0:0.05:5
         # For each bandwidth value, transform the raw posterior mean
         grid_sample = zeros(402)
         cholesky_factor = cholesky(kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
@@ -219,6 +224,75 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
             title="Kernel Bandwidth c = $c"
         )
     end
+    
+    # Generate Cholesky factor plots for specific bandwidth values
+    cholesky_plots = []
+    for c in [1.0, 4.0, 10.0]
+        # Compute kernel matrix and its Cholesky factor
+        K = kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I
+        L = cholesky(K).L
+        
+        # Create a more informative visualization
+        # 1. Main heatmap with better color scaling
+        chol_heatmap = heatmap(
+            Matrix(L), 
+            title="Cholesky Factor (c = $c)",
+            color=:viridis,
+            clim=(0, maximum(L)/4),  # Adjust color scale to highlight structure
+            aspect_ratio=:equal,
+            framestyle=:box,
+            xlabel="Column index",
+            ylabel="Row index"
+        )
+        
+        # 2. Add a plot showing the sparsity pattern
+        sparsity_pattern = abs.(L) .> 1e-3
+        sparsity_plot = spy(Matrix(L), 
+            title="Sparsity Pattern (c = $c)",
+            markersize=1,
+            color=:blues,
+            xlabel="Column index",
+            ylabel="Row index"
+        )
+        
+        # 3. Add a plot showing the diagonal values
+        diag_plot = plot(
+            diag(L), 
+            title="Diagonal Values (c = $c)",
+            xlabel="Index",
+            ylabel="Value",
+            legend=false,
+            linewidth=2
+        )
+        
+        # 4. Add a plot showing a few selected rows
+        row_indices = [1, 100, 200, 300, 400]
+        row_plot = plot(
+            title="Selected Rows of L (c = $c)",
+            xlabel="Column index",
+            ylabel="Value",
+            legend=:topright
+        )
+        
+        for (i, idx) in enumerate(row_indices)
+            if idx <= size(L, 1)
+                row_values = L[idx, 1:idx]
+                plot!(row_plot, 1:idx, row_values, 
+                      label="Row $idx", 
+                      linewidth=2,
+                      marker=:circle,
+                      markersize=3)
+            end
+        end
+        
+        # Combine the plots in a 2x2 layout
+        combined_plot = plot(chol_heatmap, sparsity_plot, diag_plot, row_plot, 
+                            layout=(2,2), 
+                            size=(800, 800),
+                            plot_title="Cholesky Factor Analysis (c = $c)")
+        
+        push!(cholesky_plots, combined_plot)
+    end
 
-    return posterior_mean_plot, kernel_parameter_plot, anim, bandwidth_anim
+    return posterior_mean_plot, kernel_parameter_plot, anim, bandwidth_anim, cholesky_plots
 end
