@@ -342,7 +342,7 @@ function quintic_smooth_transition(x, alpha, beta)
         # Normalize x to [0,1] range
         t = (x - alpha) / (beta - alpha)
         # Quintic polynomial that has zero derivatives at t=0 and t=1
-        # and exactly reaches 0 at t=0 and 1 at t=1
+        # and exactly reaches 0 at t=0 and 1 at t=1 
         return t * t * t * (10.0 + t * (-15.0 + 6.0 * t))
     end
 end
