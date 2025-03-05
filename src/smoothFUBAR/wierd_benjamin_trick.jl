@@ -126,18 +126,18 @@ function supress_vector(θ, αs, βs, dimensions)
     return A ./ T_sum
 end
 
-function benjamin_loglikelihood(model::RJGPModel,αs, βs, dimensions,fubar_to_ess, cholesky, θ; ϵ = 1e-6) 
-    c = 2 # Standard kernel bandwith
-    #c = exp(θ[end] / 2) # Kernel scaling factor, ⟹ c is sampled as lognormal. Ugly /2 trick to make it not go crazy out of bounds
+function benjamin_loglikelihood(model::RJGPModel,αs, βs, dimensions,fubar_to_ess, cholesky_factor, θ; ϵ = 1e-6) 
+    #c = 2 # Standard kernel bandwith
+    c = exp(θ[end] / 2) # Kernel scaling factor, ⟹ c is sampled as lognormal. Ugly /2 trick to make it not go crazy out of bounds
     grid_θ = θ[1:(end-2)]
-    # Σ = kernel_matrix_c(model.grid, c)[fubar_to_ess, fubar_to_ess]
-    Σ = model.Σ[fubar_to_ess, fubar_to_ess] # Since we are testing a constant kernel bw we don't have to recompute
+    Σ = kernel_matrix_c(model.grid, c)[fubar_to_ess, fubar_to_ess]
+    # Σ = model.Σ# [fubar_to_ess, fubar_to_ess] # Since we are testing a constant kernel bw we don't have to recompute
     transformed_grid_θ = zeros(length(grid_θ) + 1)
 
-    # regularised_Σ = 1/2 * (Σ + Σ') + ϵ * I
+    regularised_Σ = 1/2 * (Σ + Σ') + ϵ * I
 
-   # transformed_grid_θ[1:(end-1)] = cholesky(regularised_Σ).L * grid_θ
-    transformed_grid_θ[1:(end-1)] = cholesky * grid_θ
+    transformed_grid_θ[1:(end-1)] = cholesky(regularised_Σ).L * grid_θ
+    # transformed_grid_θ[1:(end-1)] = cholesky_factor * grid_θ
     transformed_grid_θ[end] = θ[(end-1)] # Supression parameter
 
     supressed_grid_θ = supress_vector(transformed_grid_θ, αs, βs, dimensions)
@@ -149,18 +149,20 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
     dimensions = accumulate((x, i) -> x + (20 - i), 0:(20-1); init=190) #Hard coded 20,190 for now
     αs = 0.1 .* [i for i in 0:(length(dimensions)-1)]
     βs = 0.1 .* [i for i in 1:(length(dimensions))]
-    cholesky_factor = cholesky(problem.Σ[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
-   
+    # cholesky_factor = cholesky(problem.Σ[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
+    # cholesky_factor = cholesky(problem.Σ + 1e-6 * I).L
 
-    actual_loglikelihood = prior_only ? x -> 0 : x -> benjamin_loglikelihood(problem, αs, βs, dimensions,fubar_to_ess,cholesky_factor, x)
+    actual_loglikelihood = prior_only ? x -> 0 : x -> benjamin_loglikelihood(problem, αs, βs, dimensions,fubar_to_ess,diagm(ones(402)), x)
     ESS_model = ESSModel(MvNormal(zeros(problem.dimension + 2), diagm(ones(402))), actual_loglikelihood)
     samples = AbstractMCMC.sample(ESS_model, ESS(), n_samples, progress=true)
     transformed_samples = []
     for i in eachindex(samples)
         grid_sample = zeros(402)
+        cholesky_factor = cholesky(kernel_matrix_c(problem.grid, exp(samples[i][end] / 2))[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
+        #cholesky_factor = cholesky(kernel_matrix_c(problem.grid, 2) + 1e-6 * I).L
         grid_sample[1:(end-2)] = cholesky_factor * samples[i][1:(end-2)]
         grid_sample[(end-1)] = samples[i][(end-1)]
-        grid_sample[end] = randn()
+        grid_sample[end] = exp(samples[i][end]/2)
         push!(transformed_samples, grid_sample)
     end
 
@@ -189,6 +191,34 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
     end
 
     kernel_parameter_plot = plot(exp.(kernel_parameter_samples[1:100:end] ./ 2), title = "Kernel scaling factor")
+    
+    # Add kernel bandwidth titration animation
+    # Compute the pre-transformation posterior mean (average of raw samples)
+    raw_posterior_mean = mean(samples[1:100:end])
+    
+    # Create animation showing effect of different kernel bandwidths
+    bandwidth_anim = @animate for c in 0.5:0.5:10.0
+        # For each bandwidth value, transform the raw posterior mean
+        grid_sample = zeros(402)
+        cholesky_factor = cholesky(kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
+        grid_sample[1:(end-2)] = cholesky_factor * raw_posterior_mean[1:(end-2)]
+        grid_sample[(end-1)] = raw_posterior_mean[(end-1)]
+        
+        # Apply suppression and permutation
+        transformed_sample = compute_rjess_to_fubar_permutation(
+            supress_vector(grid_sample[1:(end-1)], αs, βs, dimensions),
+            Int64(sqrt(problem.dimension))
+        )
+        
+        # Plot with current bandwidth value
+        gridplot(
+            problem.grid.alpha_ind_vec, 
+            problem.grid.beta_ind_vec, 
+            problem.grid.grid_values, 
+            transformed_sample,
+            title="Kernel Bandwidth c = $c"
+        )
+    end
 
-    return posterior_mean_plot, kernel_parameter_plot, anim
+    return posterior_mean_plot, kernel_parameter_plot, anim, bandwidth_anim
 end
