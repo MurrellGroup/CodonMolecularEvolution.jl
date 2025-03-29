@@ -124,6 +124,55 @@ function supress_vector(θ, αs, βs, dimensions)
     T_sum = sum(A)
     return A ./ T_sum
 end
+function krylov_sqrt_times_vector(A, v, m=10)
+    n = length(v)
+    m = min(m, n)  # Can't exceed matrix dimension
+    
+    # Build Krylov subspace and tridiagonal matrix using Lanczos
+    V = zeros(n, m+1)
+    T = zeros(m, m)
+    
+    # Initialize
+    V[:,1] = v / norm(v)
+    w = A * V[:,1]
+    alpha = dot(V[:,1], w)
+    w = w - alpha * V[:,1]
+    
+    T[1,1] = alpha
+    
+    # Lanczos iteration
+    for j in 2:m
+        beta = norm(w)
+        if beta < 1e-12
+            # Early termination - subspace invariant
+            return norm(v) * V[:,1:j-1] * sqrt(T[1:j-1,1:j-1]) * [1; zeros(j-2)]
+        end
+        
+        V[:,j] = w / beta
+        T[j-1,j] = beta
+        T[j,j-1] = beta
+        
+        w = A * V[:,j]
+        alpha = dot(V[:,j], w)
+        w = w - alpha * V[:,j] - beta * V[:,j-1]
+        
+        # Optional reorthogonalization for better stability
+        for i in 1:j
+            proj = dot(V[:,i], w)
+            w = w - proj * V[:,i]
+        end
+        
+        T[j,j] = alpha
+    end
+    
+    # Compute sqrt(T) using standard methods (T is small tridiagonal)
+    T_sqrt = sqrt(Symmetric(T))
+    
+    # Return approximation: ||v|| * V_m * sqrt(T_m) * e_1
+    return norm(v) * V[:,1:m] * T_sqrt * [1; zeros(m-1)]
+end
+
+#TODO: Take in distance matrix, use Krylov to make it GP surface
 
 function benjamin_loglikelihood(model::RJGPModel, αs, βs, dimensions, fubar_to_ess, cholesky_factor, θ; ϵ = 1e-2) 
     # Extract parameters
@@ -134,12 +183,9 @@ function benjamin_loglikelihood(model::RJGPModel, αs, βs, dimensions, fubar_to
     # Compute kernel matrix and regularize
     Σ = kernel_matrix_c(model.grid, c)
     Σ = Σ[fubar_to_ess, fubar_to_ess]
-    regularised_Σ = Symmetric(Σ) + ϵ * I  # Use Symmetric for better performance
-    
-    # Transform parameters
-    L = cholesky(regularised_Σ).L
+    regularised_Σ = Symmetric(Σ + ϵ * I)   # Use Symmetric for better performance
     transformed_grid_θ = zeros(eltype(θ), length(grid_θ) + 1)
-    transformed_grid_θ[1:(end-1)] = L * grid_θ  # Revert to standard multiplication
+    transformed_grid_θ[1:(end-1)] = krylov_sqrt_times_vector(regularised_Σ, grid_θ) # Krylov square root
     transformed_grid_θ[end] = y
     
     # Apply suppression and compute log-likelihood
@@ -163,9 +209,9 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
     transformed_samples = []
     for i in eachindex(samples)
         grid_sample = zeros(402)
-        cholesky_factor = cholesky(kernel_matrix_c(problem.grid, exp(samples[i][end] / 2))[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
+        # cholesky_factor = sqrt(kernel_matrix_c(problem.grid, exp(samples[i][end] / 2))[fubar_to_ess, fubar_to_ess] + 1e-6 * I)
         #cholesky_factor = cholesky(kernel_matrix_c(problem.grid, 2) + 1e-6 * I).L
-        grid_sample[1:(end-2)] = cholesky_factor * samples[i][1:(end-2)]
+        grid_sample[1:(end-2)] = krylov_sqrt_times_vector(kernel_matrix_c(problem.grid, exp(samples[i][end] / 2))[fubar_to_ess, fubar_to_ess] + 1e-6 * I, samples[i][1:(end-2)])
         grid_sample[(end-1)] = samples[i][(end-1)]
         grid_sample[end] = exp(samples[i][end]/2)
         push!(transformed_samples, grid_sample)
@@ -205,8 +251,8 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
     bandwidth_anim = @animate for c in 1.0:0.05:5
         # For each bandwidth value, transform the raw posterior mean
         grid_sample = zeros(402)
-        cholesky_factor = cholesky(kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I).L
-        grid_sample[1:(end-2)] = cholesky_factor * raw_posterior_mean[1:(end-2)]
+        # cholesky_factor = sqrt(kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I)
+        grid_sample[1:(end-2)] = krylov_sqrt_times_vector(kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I, raw_posterior_mean[1:(end-2)])
         grid_sample[(end-1)] = raw_posterior_mean[(end-1)]
         
         # Apply suppression and permutation
@@ -225,74 +271,7 @@ function ess_benjamin_trick(problem::RJGPModel; n_samples = 1000, prior_only = f
         )
     end
     
-    # Generate Cholesky factor plots for specific bandwidth values
-    cholesky_plots = []
-    for c in [1.0, 4.0, 10.0]
-        # Compute kernel matrix and its Cholesky factor
-        K = kernel_matrix_c(problem.grid, c)[fubar_to_ess, fubar_to_ess] + 1e-6 * I
-        L = cholesky(K).L
-        
-        # Create a more informative visualization
-        # 1. Main heatmap with better color scaling
-        chol_heatmap = heatmap(
-            Matrix(L), 
-            title="Cholesky Factor (c = $c)",
-            color=:viridis,
-            clim=(0, maximum(L)/4),  # Adjust color scale to highlight structure
-            aspect_ratio=:equal,
-            framestyle=:box,
-            xlabel="Column index",
-            ylabel="Row index"
-        )
-        
-        # 2. Add a plot showing the sparsity pattern
-        sparsity_pattern = abs.(L) .> 1e-3
-        sparsity_plot = spy(Matrix(L), 
-            title="Sparsity Pattern (c = $c)",
-            markersize=1,
-            color=:blues,
-            xlabel="Column index",
-            ylabel="Row index"
-        )
-        
-        # 3. Add a plot showing the diagonal values
-        diag_plot = plot(
-            diag(L), 
-            title="Diagonal Values (c = $c)",
-            xlabel="Index",
-            ylabel="Value",
-            legend=false,
-            linewidth=2
-        )
-        
-        # 4. Add a plot showing a few selected rows
-        row_indices = [1, 100, 200, 300, 400]
-        row_plot = plot(
-            title="Selected Rows of L (c = $c)",
-            xlabel="Column index",
-            ylabel="Value",
-            legend=:topright
-        )
-        
-        for (i, idx) in enumerate(row_indices)
-            if idx <= size(L, 1)
-                row_values = L[idx, 1:idx]
-                plot!(row_plot, 1:idx, row_values, 
-                      label="Row $idx", 
-                      linewidth=2,
-                      marker=:circle,
-                      markersize=3)
-            end
-        end
-        
-        # Combine the plots in a 2x2 layout
-        combined_plot = plot(chol_heatmap, sparsity_plot, diag_plot, row_plot, 
-                            layout=(2,2), 
-                            size=(800, 800),
-                            plot_title="Cholesky Factor Analysis (c = $c)")
-        
-        push!(cholesky_plots, combined_plot)
-    end
+    
 
-    return posterior_mean_plot, kernel_parameter_plot, anim, bandwidth_anim, cholesky_plots
+    return posterior_mean_plot, kernel_parameter_plot, anim, bandwidth_anim
 end
