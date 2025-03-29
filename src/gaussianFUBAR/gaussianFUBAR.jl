@@ -1,3 +1,6 @@
+include("grid_utilities.jl")
+include("krylov.jl")
+
 struct AmbientESSProblem{T}
     loglikelihood::Function
     distance_function::Function
@@ -30,17 +33,20 @@ function transform_sample(problem::AmbientESSProblem, θ::AbstractVector;
     distance_matrix = generate_distance_matrix(problem)
     return transform_sample(problem, θ, distance_matrix, m=m)
 end
-
+# Epsilon is Tykhonoff regularisation
 function transform_sample(problem::AmbientESSProblem, θ::AbstractVector, 
-                                        distance_matrix::AbstractMatrix; m=10)
+                                        distance_matrix::AbstractMatrix; m=10, ϵ = 1e-6)
     # All kernel parameters are at the end
     kernel_parameters = θ[(problem.gaussian_dimension+1):end] 
     kernel_function = x -> problem.kernel_function(x, kernel_parameters...)
-    kernel_matrix = kernel_function.(distance_matrix)
+    kernel_matrix = kernel_function.(distance_matrix) + ϵ * I
+    # println("Check: The kernel matrix is symmetric: ",issymmetric(kernel_matrix))
+    # println("Check: The kernel matrix is positive definite: ",isposdef(kernel_matrix))
+    # println("Spectrum of the kernel matrix: ",eigvals(kernel_matrix))
     ambient_gaussian_parameters = θ[1:problem.gaussian_dimension]
-
-    return krylov_sqrt_times_vector(kernel_matrix, 
-                                    ambient_gaussian_parameters, m=m)
+    transformed_θ = krylov_sqrt_times_vector(kernel_matrix, 
+                                            ambient_gaussian_parameters, m=m)                                       
+    return transformed_θ
 end
 
 # This function takes in a kernel function and a likelihood function
@@ -65,7 +71,7 @@ function kernel_sampling_ess(problem::AmbientESSProblem; m=10,
     μ0 = zeros(total_dimension)
     Σ0 = diagm(ones(total_dimension))
     prior = MvNormal(μ0, Σ0)
-    ESS_model = ESS_model(prior, loglikelihood)
+    ESS_model = ESSModel(prior, loglikelihood)
     
     ambient_samples = AbstractMCMC.sample(ESS_model, ESS(), n_samples, 
                                                     progress = progress)
@@ -108,12 +114,12 @@ function supress_vector(supression_type::SupressionType, θ::Vector{Float64})
     y = θ[end]
 
     s = softmax(grid_θ)
-    M = ones(T, length(s))can
+    M = ones(T, length(s))
 
     @inbounds for i in 2:length(supression_type.dimensions)
         start_index = supression_type.dimensions[i-1] + 1
         end_index = supression_type.dimensions[i]
-        f_i = supression_type.smoothing_function(y, supression_type.alphas[i],
+        f_i = supression_type.transition_function(y, supression_type.alphas[i],
                                                     supression_type.betas[i])
         M[start_index:end_index] .= f_i
     end
@@ -133,14 +139,19 @@ end
 function define_ambient_problem(model::GaussianFUBARModel)
     distance_matrix = generate_distance_matrix(model.gaussian_dimension, 
                                                 model.distance_function)
+
+    fubar_to_ambient_permutation = vcat(model.fubar_to_ambient_permutation_vector, 
+                                                [model.gaussian_dimension])
+
     permuted_distance_matrix = distance_matrix[
-                                model.fubar_to_ambient_permutation_vector,
-                                model.fubar_to_ambient_permutation_vector]
+                                fubar_to_ambient_permutation,
+                                fubar_to_ambient_permutation]
+
 
     ambient_distance_function = (i,j) -> permuted_distance_matrix[i,j]
     
     loglikelihood = θ -> gaussian_fubar_loglikelihood(model, θ)
-    return AmbientESSProblem(loglikelihood, ambient_distance_function, 
+    return AmbientESSProblem{Float64}(loglikelihood, ambient_distance_function, 
                                             model.kernel_function,
                                             model.gaussian_dimension,
                                             model.kernel_parameter_dimension)
@@ -158,6 +169,11 @@ function sample_gaussian_model(model::GaussianFUBARModel; m=10,
 end
 
 function standard_fubar_distance_function(grid::FUBARgrid, i,j)
+    # This accounts for the scaling parameter
+    if (i > length(grid.alpha_ind_vec) || j > length(grid.alpha_ind_vec))
+        return i == j ? 0 : Inf
+    end
+
     return (grid.alpha_ind_vec[i] - grid.alpha_ind_vec[j])^2 + 
             (grid.beta_ind_vec[i] - grid.beta_ind_vec[j])^2
 end
@@ -197,8 +213,8 @@ function define_gaussian_model(grid::FUBARgrid;
         supression_dimensions = accumulate((x, i) -> x + (grid_dimension - i),
                                                         0:(grid_dimension-1); 
                                             init=last_lower_triangular_index)       
-        alphas = 0.1 .* [i for i in 0:(length(dimensions)-1)]
-        betas = 0.1 .* [i for i in 1:(length(dimensions))]
+        alphas = 0.1 .* [i for i in 0:(length(supression_dimensions)-1)]
+        betas = 0.1 .* [i for i in 1:(length(supression_dimensions))]
 
         supression_type = SupressionType{Float64}(alphas, betas, 
                                                     supression_dimensions,

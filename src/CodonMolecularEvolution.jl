@@ -18,7 +18,7 @@ include("smoothFUBAR/matrix_interpolating_gpfubar.jl")
 include("smoothFUBAR/wierd_benjamin_trick.jl")
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
-
+include("gaussianFUBAR/gaussianFUBAR.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -45,5 +45,7 @@ export
     non_rj_gpFUBAR,
     kernel_sampling_non_rj_gpFUBAR,
     matrix_interpolating_gp_fubar_HMC_sample,
-    ess_benjamin_trick
+    ess_benjamin_trick,
+    define_gaussian_model,
+    sample_gaussian_model
 end
