@@ -47,5 +47,6 @@ export
     matrix_interpolating_gp_fubar_HMC_sample,
     ess_benjamin_trick,
     define_gaussian_model,
-    sample_gaussian_model
+    sample_gaussian_model,
+    gaussian_sample_postprocessing
 end

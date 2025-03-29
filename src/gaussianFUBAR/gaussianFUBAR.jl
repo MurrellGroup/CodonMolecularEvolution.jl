@@ -157,16 +157,7 @@ function define_ambient_problem(model::GaussianFUBARModel)
                                             model.kernel_parameter_dimension)
 end
 
-function sample_gaussian_model(model::GaussianFUBARModel; m=10, 
-                                                        prior_only = false,
-                                                        n_samples = 1000, 
-                                                        burnin = 200,
-                                                        progress = false)
-    ambient_problem = define_ambient_problem(model)
-    return kernel_sampling_ess(ambient_problem, m=m, prior_only=prior_only, 
-                                n_samples=n_samples, burnin=burnin,
-                                progress=progress)
-end
+
 
 function standard_fubar_distance_function(grid::FUBARgrid, i,j)
     # This accounts for the scaling parameter
@@ -227,4 +218,26 @@ function define_gaussian_model(grid::FUBARgrid;
                                     kernel_parameter_dimension, 
                                     fubar_to_ambient, ambient_to_fubar,
                                     supression_type)
+end
+
+function sample_gaussian_model(model::GaussianFUBARModel; m=10, 
+                                        prior_only = false,
+                                        n_samples = 1000, 
+                                        burnin = 200,
+                                        progress = false)
+
+    ambient_problem = define_ambient_problem(model)
+    return kernel_sampling_ess(ambient_problem, m=m, prior_only=prior_only, 
+    n_samples=n_samples, burnin=burnin,
+    progress=progress)
+end
+
+function gaussian_sample_postprocessing(model::GaussianFUBARModel, θs; thinning = 100, m = 10)
+
+    thinned_samples = θs[1:thinning:end]
+
+    ambient_problem = define_ambient_problem(model)
+
+    transformed_samples = [transform_sample(ambient_problem, θ; m = m) for θ in thinned_samples]
+    
 end
