@@ -18,9 +18,9 @@ include("smoothFUBAR/matrix_interpolating_gpfubar.jl")
 include("smoothFUBAR/wierd_benjamin_trick.jl")
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
-include("gaussianFUBAR/gaussianFUBAR.jl")
-include("gaussianFUBAR/krylov.jl")
-include("gaussianFUBAR/grid_utilities.jl")
+include("FUBAR/gaussianFUBAR.jl")
+include("FUBAR/krylov.jl")
+include("FUBAR/grid_utilities.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -50,5 +50,8 @@ export
     ess_benjamin_trick,
     define_gaussian_model,
     sample_gaussian_model,
-    gaussian_sample_postprocessing
+    gaussian_sample_postprocessing,
+    perform_FUBAR_analysis,
+    SKBDIFUBAR,
+    alphabetagrid # Lolwat how is this not already exported?
 end
