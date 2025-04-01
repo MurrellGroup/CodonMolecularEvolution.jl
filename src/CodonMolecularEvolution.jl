@@ -19,6 +19,8 @@ include("smoothFUBAR/wierd_benjamin_trick.jl")
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("gaussianFUBAR/gaussianFUBAR.jl")
+include("gaussianFUBAR/krylov.jl")
+include("gaussianFUBAR/grid_utilities.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
