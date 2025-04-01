@@ -286,7 +286,7 @@ function perform_FUBAR_analysis(method::SKBDIFUBAR; analysis_name = "",
                                                 supression_type = 
                                                 method.supression_type)
 
-    samples = sample_gaussian_model(method, m = parameters.m, 
+    samples = sample_gaussian_model(model, m = parameters.m, 
                                             n_samples = parameters.n_samples,
                                             burnin = parameters.burnin)
 

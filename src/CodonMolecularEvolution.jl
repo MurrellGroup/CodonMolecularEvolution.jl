@@ -53,5 +53,7 @@ export
     gaussian_sample_postprocessing,
     perform_FUBAR_analysis,
     SKBDIFUBAR,
-    alphabetagrid # Lolwat how is this not already exported?
+    alphabetagrid,
+    DirichletFUBAR,
+    FIFEFUBAR
 end

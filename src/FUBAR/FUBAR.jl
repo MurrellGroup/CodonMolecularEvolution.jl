@@ -1,4 +1,3 @@
-
 # This file should include all the stuff that is common across FUBAR methods.
 # A FUBAR method at its most basic level should be able to take in a tagged tree
 # and output an empirical prior distribution corresponding to a discretisation of the
@@ -73,33 +72,34 @@ struct FUBARPosterior{T}
     purifying_posteriors::Vector{T}
     beta_posterior_mean::Vector{T}
     alpha_posterior_mean::Vector{T}
-    posterior_alpha::Vector{T}
-    posterior_beta::Vector{T}
+    posterior_alpha::Matrix{T}
+    posterior_beta::Matrix{T}
     posterior_mean::Vector{T}
 end
 
 function FUBAR_shared_postprocessing(θ, grid::FUBARgrid)
-
     positive_filter = grid.beta_ind_vec .> grid.alpha_ind_vec
     purifying_filter = grid.beta_ind_vec .< grid.alpha_ind_vec
     weighted_matrix = grid.cond_lik_matrix .* θ
     # Renormalisation
-    weighted_matrix = weighted_matrix ./ sum(weighted_matrix, dim=1)
-    positive_posteriors = sum(weighted_mat[positive_filter, :], dims=1)[:]
-    purifying_posteriors = sum(weighted_mat[purifying_filter, :], dims=1)[:]
-    beta_posterior_mean = sum(weighted_mat .* grid.beta_vec, dims=1)[:]
-    alpha_posterior_mean = sum(weighted_mat .* grid.alpha_vec, dims=1)[:]
+    weighted_matrix = weighted_matrix ./ sum(weighted_matrix, dims=1)
+    positive_posteriors = sum(weighted_matrix[positive_filter, :], dims=1)[:]
+    purifying_posteriors = sum(weighted_matrix[purifying_filter, :], dims=1)[:]
+    beta_posterior_mean = sum(weighted_matrix .* grid.beta_vec, dims=1)[:]
+    alpha_posterior_mean = sum(weighted_matrix .* grid.alpha_vec, dims=1)[:]
 
-    weighted_sites = reshape(weighted_mat, 20, 20, :)
-    #Note: summing over first dim is summing over beta
-    posterior_alpha = sum(weighted_sites, dims=1)[1, :, :]
-    posterior_beta = sum(weighted_sites, dims=2)[:, 1, :]
+    n_grid = Int(sqrt(length(grid.beta_vec)))  # should be 20
+    weighted_sites = reshape(weighted_matrix, n_grid, n_grid, :)
+    # Keep as matrices (n_grid × num_sites)
+    posterior_alpha = reshape(sum(weighted_sites, dims=2), n_grid, :)  # Sum over beta dimension
+    posterior_beta = reshape(sum(weighted_sites, dims=1), n_grid, :)   # Sum over alpha dimension
+    
     return FUBARPosterior(positive_posteriors, purifying_posteriors,
         beta_posterior_mean, alpha_posterior_mean,
         posterior_alpha, posterior_beta, θ)
 end
-function violin_plot_sites(posteriors, posterior_alpha,
-    posterior_beta;
+function violin_plot_sites(grid::FUBARgrid, posteriors, posterior_alpha::Matrix,
+    posterior_beta::Matrix;
     volume_scaling=1.0,
     posterior_threshold=0.95)
 
@@ -112,9 +112,10 @@ function violin_plot_sites(posteriors, posterior_alpha,
         return nothing
     end
     violin_plots = plot()
+    
     s = 0.5 / max(maximum(posterior_alpha[:, sites_to_plot]), maximum(posterior_beta[:, sites_to_plot]))
-    FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:, [i]] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
-    FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:, [i]] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
+    FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:, i:i] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
+    FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:, i:i] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
     plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
     return violin_plots
 end
@@ -123,24 +124,17 @@ function plot_FUBAR_posterior(grid::FUBARgrid, posterior::FUBARPosterior;
     posterior_threshold=0.95,
     volume_scaling=1.0)
 
-    positive_posteriors, purifying_posteriors, beta_posterior_mean, alpha_posterior_mean, posterior_alpha, posterior_beta, θ = posterior
+    positive_violin_plots = violin_plot_sites(grid, posterior.positive_posteriors,
+        posterior.posterior_alpha, posterior.posterior_beta,
+        volume_scaling=volume_scaling,
+        posterior_threshold=posterior_threshold)
 
-
-
-    positive_violin_plots = violin_plot_sites(positive_posteriors,
-        posterior_alpha, posterior_beta,
-        volume_scaling=
-        volume_scaling,
-        posterior_threshold=
-        posterior_threshold)
-
-    purifying_violin_plots = violin_plot_sites(purifying_posteriors,
-        posterior_alpha, posterior_beta,
-        volume_scaling=
-        volume_scaling,
-        posterior_threshold=
-        posterior_threshold)
-    posterior_mean_plot = gridplot(grid, θ, title="Posterior mean θ")
+    purifying_violin_plots = violin_plot_sites(grid, posterior.purifying_posteriors,
+        posterior.posterior_alpha, posterior.posterior_beta,
+        volume_scaling=volume_scaling,
+        posterior_threshold=posterior_threshold)
+        
+    posterior_mean_plot = gridplot(grid, posterior.posterior_mean, title="Posterior mean θ")
 
     return positive_violin_plots, purifying_violin_plots, posterior_mean_plot
 end
@@ -178,9 +172,9 @@ function perform_FUBAR_analysis(grid::FUBARgrid, θ;
     df_results = FUBAR_posterior_to_df(grid, posterior, analysis_name=analysis_name, write=save)
 
     if save
-        savefig(analysis_name * "_violin_positive.pdf", positive_violin_plots)
-        savefig(analysis_name * "_violin_purifying.pdf", purifying_violin_plots)
-        savefig(analysis_name * "_posterior_mean.pdf", posterior_mean_plot)
+        if !isnothing(positive_violin_plots) savefig(positive_violin_plots, analysis_name * "_violin_positive.pdf") end
+        if !isnothing(purifying_violin_plots) savefig(purifying_violin_plots, analysis_name * "_violin_purifying.pdf") end
+        savefig(posterior_mean_plot, analysis_name * "_posterior_mean.pdf")
     end
     return positive_violin_plots, purifying_violin_plots, posterior_mean_plot,
     df_results
@@ -223,8 +217,8 @@ function perform_FUBAR_analysis(method::DirichletFUBAR; analysis_name=
                                 code=MolecularEvolution.universal_code,
                                 optimize_branch_lengths=false,
                                 em_parameters=(concentration=0.5, 
-                                iterations=2500)
-                                )
+                                iterations=2500),
+                                volume_scaling=1.0)
     if save
         init_path(analysis_name)
     end
@@ -294,7 +288,7 @@ end
     contour(x, y, z, levels=30, color=:turbo, fill=true, linewidth = 0, colorbar = false, size = (400,400))
 =#
 function perform_FUBAR_analysis(method::FIFEFUBAR; analysis_name = "fife_analysis", verbosity=1, save=true)
-    exports && init_path(outpath)
+    save && init_path(analysis_name)
     f = method.grid
     LLmatrix = reshape(f.LL_matrix, length(f.grid_values),length(f.grid_values),:) 
     #Note: dim1 = beta, dim2 = alpha, so we transpose going in:
@@ -304,7 +298,7 @@ function perform_FUBAR_analysis(method::FIFEFUBAR; analysis_name = "fife_analysi
     df_results.α_alt .= f.grid_function.(df_results.α_alt)
     df_results.β_alt .= f.grid_function.(df_results.β_alt)
     df_results.αβ_null .= f.grid_function.(df_results.αβ_null)
-    CSV.write(outpath * "_results.csv", df_results)
+    CSV.write(analysis_name * "_results.csv", df_results)
     return df_results
 end
 
