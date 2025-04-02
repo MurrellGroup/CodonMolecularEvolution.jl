@@ -267,7 +267,7 @@ function SKBDIFUBAR(grid::FUBARgrid{T};
 end
 
 
-function perform_FUBAR_analysis(method::SKBDIFUBAR; analysis_name = "", 
+function FUBAR_analysis(method::SKBDIFUBAR; analysis_name = "", 
                                                 volume_scaling = 1.0,
                                                 save = true,
                                                 verbosity = 1,
@@ -294,7 +294,7 @@ function perform_FUBAR_analysis(method::SKBDIFUBAR; analysis_name = "",
                                                 parameters.thinning, 
                                                 m = parameters.m)
 
-    analysis = perform_FUBAR_analysis(method.grid, θ, analysis_name = analysis_name,
+    analysis = FUBAR_analysis(method.grid, θ, analysis_name = analysis_name,
                                             posterior_threshold = 
                                             posterior_threshold, 
                                             volume_scaling = volume_scaling, 

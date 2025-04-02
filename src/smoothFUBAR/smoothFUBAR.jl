@@ -87,25 +87,9 @@ end
 
 #Plots that are common to all RFF methods
 function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapts; plots = true)
-    if plots
-        anim = @animate for i ∈ (n_adapts+1):1:length(samples)
-            gridplot(f.alpha_ind_vec,f.beta_ind_vec,f.grid_values,thetas(ℓπ, samples[i].z.θ))
-        end
-        gif(anim, analysis_name * "_posterior_θ_samples.mp4", fps = 15)
-        plot(f.LL_offset .+ [samples[i].stat.log_density for i in (n_adapts+1):length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
-        savefig(analysis_name * "_log_posterior_trace.pdf")
-        plot(f.LL_offset .+ [samples[i].stat.log_density for i in 1:length(samples)], label = "Log Posterior", size = (700,350), xlabel = "Iterations")
-        savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
-    end
     all_theta_chains = stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])
     essdf = DataFrame(ess(Chains(all_theta_chains', [Symbol("θ$(i)") for i in 1:size(all_theta_chains,1)])))[:,[:parameters,:ess]]
     CSV.write(analysis_name * "_θ_ESS.csv", essdf)
-    if plots
-     inds_to_plot = sortperm(posterior_mean_θ, rev = true)[(1:(Int(sqrt(length(f.alpha_ind_vec))))).^2]
-     plot(all_theta_chains[inds_to_plot,:]',
-        legend = :none, alpha = 0.5, size = (700,350), xlabel = "Iterations")
-     savefig(analysis_name * "_posterior_θ_trace.pdf")
-    end
 end
 
 #Generic other_plots that does nothing - will be overridden when needed
@@ -153,10 +137,6 @@ function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name,
         bayesfactor = pospos/(1-pospos) * (1-prior_possel)/prior_possel
     end
     ppstr = "P(φ>0|data)=$(round(pospos,sigdigits=4)). BF = $(round(bayesfactor,sigdigits=4))"
-    if plots
-        plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φpre_trace.pdf"; transform = x->x, title = ppstr, ylabel = "φpre")
-        plot_trace(samples[n_adapts+1:end], :φpre, LP, analysis_name*"_φ_trace.pdf"; transform = transf(M()), title = ppstr, ylabel = "φ")
-    end
     (verbosity > 0) && println(ppstr)
     essdf = DataFrame(ess(Chains([[LP.unflatten(s.z.θ).φpre for s in samples[n_adapts+1:end]] [transf(M())(LP.unflatten(s.z.θ).φpre) for s in samples[n_adapts+1:end]]],
                                     [:φpre, :φ])))[:,[:parameters,:ess]]
@@ -164,7 +144,6 @@ function other_plots(LP::LogPosteriorRFF{Float64, M}, samples, f, analysis_name,
     smoothFUBAR_mixing = calculate_smoothFUBAR_mixing(LP, samples, n_adapts)
     return (θ = posterior_mean_θ, φ_crossings = smoothFUBAR_mixing, global_posterior_probability = pospos, global_bayes_factor = bayesfactor)
 end
-
 
 function calculate_smoothFUBAR_mixing(LP::LogPosteriorRFF{Float64, M}, samples,n_adapts) where M<:WeightedHMC_FUBAR
         ϕ_samples = [LP.unflatten(s.z.θ).φpre for s in samples[n_adapts+1:end]]

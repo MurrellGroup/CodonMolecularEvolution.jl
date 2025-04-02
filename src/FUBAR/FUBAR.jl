@@ -16,12 +16,7 @@ struct FUBARgrid{T}
 end
 
 function gridplot(grid::FUBARgrid, θ; title="")
-    scatter(grid.alpha_ind_vec, grid.beta_ind_vec, zcolor=θ, c=:darktest,
-        markersize=sqrt(length(grid.alpha_ind_vec)) / 3.5, markershape=:square, markerstrokewidth=0.0, size=(400, 350),
-        label=:none, xticks=(1:length(grid.grid_values), round.(grid.grid_values, digits=3)), xrotation=90,
-        yticks=(1:length(grid.grid_values), round.(grid.grid_values, digits=3)), margin=6Plots.mm,
-        xlabel="α", ylabel="β", title=title, colorbar=true, right_margin=12Plots.mm)
-    plot!(1:length(grid.grid_values), 1:length(grid.grid_values), color="grey", style=:dash, label=:none)
+    return nothing
 end
 
 function FUBAR_init(treestring; verbosity=1, exports=true, disable_binarize=false, ladderize_tree=false)
@@ -102,41 +97,13 @@ function violin_plot_sites(grid::FUBARgrid, posteriors, posterior_alpha::Matrix,
     posterior_beta::Matrix;
     volume_scaling=1.0,
     posterior_threshold=0.95)
-
-    grid_values = grid.beta_vec[1:Int(sqrt(length(grid.beta_vec)))]
-    grd = round.(grid_values, digits=3)
-
-    sites_to_plot = findall(posteriors .> posterior_threshold)
-    num_plot = length(sites_to_plot)
-    if num_plot == 0
-        return nothing
-    end
-    violin_plots = plot()
-    
-    s = 0.5 / max(maximum(posterior_alpha[:, sites_to_plot]), maximum(posterior_beta[:, sites_to_plot]))
-    FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_alpha[:, i:i] for i in sites_to_plot], grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
-    FUBAR_violin_plot(sites_to_plot, [s .* volume_scaling .* posterior_beta[:, i:i] for i in sites_to_plot], grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
-    plot!(size=(400, num_plot * 17 + 300), grid=false, margin=15Plots.mm)
-    return violin_plots
+    return nothing
 end
 
 function plot_FUBAR_posterior(grid::FUBARgrid, posterior::FUBARPosterior;
     posterior_threshold=0.95,
     volume_scaling=1.0)
-
-    positive_violin_plots = violin_plot_sites(grid, posterior.positive_posteriors,
-        posterior.posterior_alpha, posterior.posterior_beta,
-        volume_scaling=volume_scaling,
-        posterior_threshold=posterior_threshold)
-
-    purifying_violin_plots = violin_plot_sites(grid, posterior.purifying_posteriors,
-        posterior.posterior_alpha, posterior.posterior_beta,
-        volume_scaling=volume_scaling,
-        posterior_threshold=posterior_threshold)
-        
-    posterior_mean_plot = gridplot(grid, posterior.posterior_mean, title="Posterior mean θ")
-
-    return positive_violin_plots, purifying_violin_plots, posterior_mean_plot
+    return nothing, nothing, nothing
 end
 
 function FUBAR_posterior_to_df(grid::FUBARgrid, posterior::FUBARPosterior;
@@ -154,12 +121,13 @@ function FUBAR_posterior_to_df(grid::FUBARgrid, posterior::FUBARPosterior;
     return df_results
 end
 
-function perform_FUBAR_analysis(grid::FUBARgrid, θ;
+function FUBAR_analysis(grid::FUBARgrid, θ;
     analysis_name="fubar_analysis",
     save=false,
     posterior_threshold=0.95,
     volume_scaling=1.0,
     verbosity = 1)
+    
     posterior = FUBAR_shared_postprocessing(θ, grid)
     positive_violin_plots, purifying_violin_plots,
     posterior_mean_plot = plot_FUBAR_posterior(grid,
@@ -171,13 +139,22 @@ function perform_FUBAR_analysis(grid::FUBARgrid, θ;
 
     df_results = FUBAR_posterior_to_df(grid, posterior, analysis_name=analysis_name, write=save)
 
-    if save
-        if !isnothing(positive_violin_plots) savefig(positive_violin_plots, analysis_name * "_violin_positive.pdf") end
-        if !isnothing(purifying_violin_plots) savefig(purifying_violin_plots, analysis_name * "_violin_purifying.pdf") end
-        savefig(posterior_mean_plot, analysis_name * "_posterior_mean.pdf")
-    end
-    return positive_violin_plots, purifying_violin_plots, posterior_mean_plot,
-    df_results
+    # Create plots_to_save tuple
+    plots_to_save = (
+        positive_violin = (positive_violin_plots, analysis_name * "_violin_positive.pdf"),
+        purifying_violin = (purifying_violin_plots, analysis_name * "_violin_purifying.pdf"),
+        posterior_mean = (posterior_mean_plot, analysis_name * "_posterior_mean.pdf")
+    )
+
+    # This will be a no-op if Plots.jl is not loaded
+    maybe_save_plots(plots_to_save, save)
+
+    return positive_violin_plots, purifying_violin_plots, posterior_mean_plot, df_results
+end
+
+# Default implementation that does nothing
+function maybe_save_plots(plots_to_save::NamedTuple, save::Bool)
+    return nothing
 end
 
 #Packaging "everything before the conditional likelihoods"
@@ -196,7 +173,7 @@ end
 
 abstract type FUBARMethod end
 
-perform_FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", save=false) = nothing
+FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", save=false) = nothing
 # SKBDI - Smooth Kernel Based Density Inference
 
 ## HERE BEGINS OLD FUBAR
@@ -210,7 +187,7 @@ function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     LDAθ = weightEM(con_lik_matrix, ones(L) ./ L, conc=conc, iters=iters)
     return LDAθ
 end
-function perform_FUBAR_analysis(method::DirichletFUBAR; analysis_name=
+function FUBAR_analysis(method::DirichletFUBAR; analysis_name=
                                 "dirichlet_fubar_analysis",
                                 save=true,
                                 posterior_threshold=0.95, verbosity=1,
@@ -224,7 +201,7 @@ function perform_FUBAR_analysis(method::DirichletFUBAR; analysis_name=
     end
     θ = FUBAR_fitEM(method.grid.cond_lik_matrix, em_parameters.iterations, 
                         em_parameters.concentration, verbosity=verbosity)
-    analysis = perform_FUBAR_analysis(method.grid, θ; posterior_threshold =
+    analysis = FUBAR_analysis(method.grid, θ; posterior_threshold =
                                                         posterior_threshold, 
                                                         volume_scaling = 
                                                         volume_scaling,
@@ -287,7 +264,7 @@ end
     z = @. itp(x', y)
     contour(x, y, z, levels=30, color=:turbo, fill=true, linewidth = 0, colorbar = false, size = (400,400))
 =#
-function perform_FUBAR_analysis(method::FIFEFUBAR; analysis_name = "fife_analysis", verbosity=1, save=true)
+function FUBAR_analysis(method::FIFEFUBAR; analysis_name = "fife_analysis", verbosity=1, save=true)
     save && init_path(analysis_name)
     f = method.grid
     LLmatrix = reshape(f.LL_matrix, length(f.grid_values),length(f.grid_values),:) 
@@ -298,7 +275,7 @@ function perform_FUBAR_analysis(method::FIFEFUBAR; analysis_name = "fife_analysi
     df_results.α_alt .= f.grid_function.(df_results.α_alt)
     df_results.β_alt .= f.grid_function.(df_results.β_alt)
     df_results.αβ_null .= f.grid_function.(df_results.αβ_null)
-    CSV.write(analysis_name * "_results.csv", df_results)
+    save && CSV.write(analysis_name * "_results.csv", df_results)
     return df_results
 end
 
