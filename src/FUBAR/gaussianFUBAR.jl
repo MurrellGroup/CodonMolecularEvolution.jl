@@ -250,7 +250,7 @@ function SKBDIFUBAR(::Type{T} = Float64) where {T}
 end
 
 function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T}; 
-    analysis_name = "", 
+    analysis_name = "skbdi_fubar_analysis", 
     volume_scaling = 1.0,
     write = true,
     verbosity = 1,
@@ -297,7 +297,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
     results = FUBAR_bayesian_postprocessing(θ, grid)
 
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
-        
+    plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
     return analysis, (θ = θ, )
 end
 

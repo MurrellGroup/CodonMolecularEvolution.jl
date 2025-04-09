@@ -96,7 +96,7 @@ struct BayesianFUBARResults{T} <: FUBARResults
     theta_chain::Union{Nothing, Vector{T}}
 end
 
-# For some bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
+# For some Bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
 
 function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARgrid{T}) where {T}
     θ = mean(θs)
@@ -142,7 +142,7 @@ function tabulate_fubar_results(method::DefaultBayesianFUBARMethod, results::Bay
     end
     return df_results
 end
-
+function plot_fubar_results(method::FUBARMethod, results::FUBARResults, grid::FUBARgrid; analysis_name = "fubar_analysis", write = false) end
 
 # SKBDI - Smooth Kernel Based Density Inference
 
@@ -185,6 +185,8 @@ function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T};
     results = FUBAR_bayesian_postprocessing(θ, grid)
     
     df_results = tabulate_fubar_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, write = write)
+
+    plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)
 
     return df_results, (θ = θ, )
 

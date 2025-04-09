@@ -38,7 +38,7 @@ export
     generate_RJGP_model,
     reversible_slice_sampling,
     plot_logposteriors_with_transitions,
-    gridplot,
+    # gridplot,
     define_gaussian_model,
     sample_gaussian_model,
     gaussian_sample_postprocessing,
@@ -46,5 +46,6 @@ export
     SKBDIFUBAR,
     alphabetagrid,
     DirichletFUBAR,
-    FIFEFUBAR
+    FIFEFUBAR,
+    FUBARgrid
 end
