@@ -15,9 +15,18 @@ struct FUBARgrid{T}
     LL_matrix::Matrix{T}
 end
 
-function gridplot(grid::FUBARgrid, θ; title="")
-    return nothing
-end
+# All common functions go here and types go here
+
+abstract type FUBARResults end
+abstract type FUBARMethod end
+abstract type BayesianFUBARMethod <: FUBARMethod end
+struct DefaultBayesianFUBARMethod <: BayesianFUBARMethod end
+
+FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", write=false) = nothing
+
+function tabulate_fubar_results(method::FUBARMethod,results::FUBARResults; analysis_name = "", write = false) end
+
+# Specific functions that are shared
 
 function FUBAR_init(treestring; verbosity=1, exports=true, disable_binarize=false, ladderize_tree=false)
 
@@ -62,7 +71,21 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1, grid_function=x
     return FUBARgrid(grid_values, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, prob_matrix, LLO, size(prob_matrix, 2), grid_function, LL_matrix)
 end
 
-struct FUBARPosterior{T}
+#Packaging "everything before the conditional likelihoods"
+function alphabetagrid(seqnames::Vector{String}, seqs, treestring::String;
+    verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
+    tree = FUBAR_init(treestring, verbosity=verbosity)
+    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
+    return FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity)
+end
+function init_path(analysis_name)
+    splt = splitpath(analysis_name)[1:end-1]
+    if length(splt) > 0
+        mkpath(joinpath(splt))
+    end
+end
+
+struct BayesianFUBARResults{T} <: FUBARResults 
     positive_posteriors::Vector{T}
     purifying_posteriors::Vector{T}
     beta_posterior_mean::Vector{T}
@@ -70,9 +93,19 @@ struct FUBARPosterior{T}
     posterior_alpha::Matrix{T}
     posterior_beta::Matrix{T}
     posterior_mean::Vector{T}
+    theta_chain::Union{Nothing, Vector{T}}
 end
 
-function FUBAR_shared_postprocessing(θ, grid::FUBARgrid)
+# For some bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
+
+function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARgrid{T}) where {T}
+    θ = mean(θs)
+    results = FUBAR_bayesian_postprocessing(θ, grid)
+    results.theta_chain = θs
+    return results
+end
+
+function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARgrid{T}) where {T}
     positive_filter = grid.beta_ind_vec .> grid.alpha_ind_vec
     purifying_filter = grid.beta_ind_vec .< grid.alpha_ind_vec
     weighted_matrix = grid.cond_lik_matrix .* θ
@@ -89,134 +122,92 @@ function FUBAR_shared_postprocessing(θ, grid::FUBARgrid)
     posterior_alpha = reshape(sum(weighted_sites, dims=2), n_grid, :)  # Sum over beta dimension
     posterior_beta = reshape(sum(weighted_sites, dims=1), n_grid, :)   # Sum over alpha dimension
     
-    return FUBARPosterior(positive_posteriors, purifying_posteriors,
+    return BayesianFUBARResults(positive_posteriors, purifying_posteriors,
         beta_posterior_mean, alpha_posterior_mean,
-        posterior_alpha, posterior_beta, θ)
-end
-function violin_plot_sites(grid::FUBARgrid, posteriors, posterior_alpha::Matrix,
-    posterior_beta::Matrix;
-    volume_scaling=1.0,
-    posterior_threshold=0.95)
-    return nothing
+        posterior_alpha, posterior_beta, θ, nothing)
 end
 
-function plot_FUBAR_posterior(grid::FUBARgrid, posterior::FUBARPosterior;
-    posterior_threshold=0.95,
-    volume_scaling=1.0)
-    return nothing, nothing, nothing
-end
 
-function FUBAR_posterior_to_df(grid::FUBARgrid, posterior::FUBARPosterior;
-    analysis_name="fubar_analysis",
-    write=false)
+function tabulate_fubar_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "bayesian_analysis", write = false)
+    
     df_results = DataFrame(site=1:size(grid.cond_lik_matrix, 2),
-        positive_posterior=posterior.positive_posteriors,
-        purifying_posterior=posterior.purifying_posteriors,
-        beta_posterior_mean=posterior.beta_posterior_mean,
-        alpha_pos_mean=posterior.alpha_posterior_mean)
+        positive_posterior=results.positive_posteriors,
+        purifying_posterior=results.purifying_posteriors,
+        beta_posterior_mean=results.beta_posterior_mean,
+        alpha_pos_mean=results.alpha_posterior_mean)
 
     if write
+        init_path(analysis_name)
         CSV.write(analysis_name * "_results.csv", df_results)
     end
     return df_results
 end
 
-function FUBAR_analysis(grid::FUBARgrid, θ;
-    analysis_name="fubar_analysis",
-    save=false,
-    posterior_threshold=0.95,
-    volume_scaling=1.0,
-    verbosity = 1)
-    
-    posterior = FUBAR_shared_postprocessing(θ, grid)
-    positive_violin_plots, purifying_violin_plots,
-    posterior_mean_plot = plot_FUBAR_posterior(grid,
-        posterior,
-        posterior_threshold=
-        posterior_threshold,
-        volume_scaling=
-        volume_scaling)
 
-    df_results = FUBAR_posterior_to_df(grid, posterior, analysis_name=analysis_name, write=save)
-
-    # Create plots_to_save tuple
-    plots_to_save = (
-        positive_violin = (positive_violin_plots, analysis_name * "_violin_positive.pdf"),
-        purifying_violin = (purifying_violin_plots, analysis_name * "_violin_purifying.pdf"),
-        posterior_mean = (posterior_mean_plot, analysis_name * "_posterior_mean.pdf")
-    )
-
-    # This will be a no-op if Plots.jl is not loaded
-    maybe_save_plots(plots_to_save, save)
-
-    return positive_violin_plots, purifying_violin_plots, posterior_mean_plot, df_results
-end
-
-# Default implementation that does nothing
-function maybe_save_plots(plots_to_save::NamedTuple, save::Bool)
-    return nothing
-end
-
-#Packaging "everything before the conditional likelihoods"
-function alphabetagrid(seqnames::Vector{String}, seqs, treestring::String;
-    verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
-    tree = FUBAR_init(treestring, verbosity=verbosity)
-    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
-    return FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity)
-end
-function init_path(analysis_name)
-    splt = splitpath(analysis_name)[1:end-1]
-    if length(splt) > 0
-        mkpath(joinpath(splt))
-    end
-end
-
-abstract type FUBARMethod end
-
-FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", save=false) = nothing
 # SKBDI - Smooth Kernel Based Density Inference
 
-## HERE BEGINS OLD FUBAR
-struct DirichletFUBAR{T} <: FUBARMethod
-    grid::FUBARgrid{T}
-end
-
+# BEGIN DIRICHLET FUBAR
 function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     verbosity > 0 && println("Step 4: Model fitting.")
     L = size(con_lik_matrix, 1)
     LDAθ = weightEM(con_lik_matrix, ones(L) ./ L, conc=conc, iters=iters)
     return LDAθ
 end
-function FUBAR_analysis(method::DirichletFUBAR; analysis_name=
-                                "dirichlet_fubar_analysis",
-                                save=true,
-                                posterior_threshold=0.95, verbosity=1,
-                                code=MolecularEvolution.universal_code,
-                                optimize_branch_lengths=false,
-                                em_parameters=(concentration=0.5, 
-                                iterations=2500),
-                                volume_scaling=1.0)
-    if save
+
+struct DirichletFUBAR{T} <: BayesianFUBARMethod
+    function DirichletFUBAR{T}() where {T}
+        return new{T}()
+    end
+end
+
+function DirichletFUBAR(::Type{T} = Float64) where {T}
+    return DirichletFUBAR{T}()
+end
+
+function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T}; 
+    analysis_name = "dirichlet_fubar_analysis",
+    write = true,
+    posterior_threshold = 0.95, 
+    verbosity = 1,
+    code = MolecularEvolution.universal_code,
+    optimize_branch_lengths = false,
+    concentration = 0.5,
+    iterations = 2500,
+    volume_scaling = 1.0) where {T}
+    
+    if write
         init_path(analysis_name)
     end
-    θ = FUBAR_fitEM(method.grid.cond_lik_matrix, em_parameters.iterations, 
-                        em_parameters.concentration, verbosity=verbosity)
-    analysis = FUBAR_analysis(method.grid, θ; posterior_threshold =
-                                                        posterior_threshold, 
-                                                        volume_scaling = 
-                                                        volume_scaling,
-                                                        save = save,
-                                                        verbosity = verbosity)
-    return analysis, (θ = θ, )
+    
+    θ = FUBAR_fitEM(grid.cond_lik_matrix, iterations, concentration, 
+                verbosity = verbosity)
+                
+    results = FUBAR_bayesian_postprocessing(θ, grid)
+    
+    df_results = tabulate_fubar_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, write = write)
+
+    return df_results, (θ = θ, )
+
+
+
 end
-## HERE ENDS OLD FUBAR
+# END DIRICHLET FUBAR
+
 
 ## HERE BEGINS FIFE FUBAR 
+function interpolating_LRS(grid)
+    itp = interpolate(grid, BSpline(Cubic(Line(OnGrid()))))
+    
+    #Null model:
+    ab = brents_method_minimize(x -> -itp(x,x), 1, 20, identity, 1e-20)
+    LL_null = itp(ab,ab)
 
-struct FIFEFUBAR{T} <: FUBARMethod
-    grid::FUBARgrid{T}
+    #Alt model:
+    a,b,LL_alt = alternating_maximize(itp, (1.0,20.0), (1.0,20.0))
+    LRS = 2(LL_alt-LL_null)
+    p = 1-cdf(Chisq(1), LRS)
+    return p, (p_value = p, LRS = LRS, LL_alt = LL_alt, α_alt = a, β_alt = b, LL_null = LL_null, αβ_null = ab, sel = ifelse(p<0.05,ifelse(b>a, "Positive", "Purifying"), ""))
 end
-
 function alternating_maximize(f, a_bounds, b_bounds; final_tol = 1e-20, max_iters = 50)
     a = sum(a_bounds)/2
     b = sum(b_bounds)/2
@@ -238,45 +229,95 @@ function alternating_maximize(f, a_bounds, b_bounds; final_tol = 1e-20, max_iter
     end
     return a,b,-m
 end
-
-#Generalize this to work with any grid dimensions!
-function interpolating_LRS(grid)
-    itp = interpolate(grid, BSpline(Cubic(Line(OnGrid()))))
-    
-    #Null model:
-    ab = brents_method_minimize(x -> -itp(x,x), 1, 20, identity, 1e-20)
-    LL_null = itp(ab,ab)
-
-    #Alt model:
-    a,b,LL_alt = alternating_maximize(itp, (1.0,20.0), (1.0,20.0))
-    LRS = 2(LL_alt-LL_null)
-    p = 1-cdf(Chisq(1), LRS)
-    return p, (p_value = p, LRS = LRS, LL_alt = LL_alt, α_alt = a, β_alt = b, LL_null = LL_null, αβ_null = ab, sel = ifelse(p<0.05,ifelse(b>a, "Positive", "Purifying"), ""))
+struct FrequentistFUBARResults{T} <: FUBARResults
+    site_p_value::Vector{T} # p value for α ≠ β at site
+    site_LRS::Vector{T} # The raw likelihood ratio
+    ha_loglikelihood::Vector{T} # The maximised ll of the alt hyp
+    fitted_alpha_ha::Vector{T} # ML estimate of alpha under alt hyp
+    fitted_beta_ha::Vector{T} # ML estimate of beta under alt hyp
+    hzero_loglikelihood::Vector{T}
+    fitted_rate_hzero::Vector{T} # ML estimate of transition rate under null hyp
+end
+struct FIFEFUBAR{T} <: FUBARMethod
+    function FIFEFUBAR{T}() where {T}
+        return new{T}()
+    end
 end
 
-#Frequentist interpolating fixed-effects FUBAR
-#This needs to have exports like regular FUBAR - plots etc
-#We could plot LL surfaces for each site under selection, like this:
-#=
-    itp = interpolate((LLmatrix[:,:,190]'), BSpline(Cubic(Line(OnGrid()))));
-    x = range(1, 20, length=200)
-    y = range(1, 20, length=200)
-    z = @. itp(x', y)
-    contour(x, y, z, levels=30, color=:turbo, fill=true, linewidth = 0, colorbar = false, size = (400,400))
-=#
-function FUBAR_analysis(method::FIFEFUBAR; analysis_name = "fife_analysis", verbosity=1, save=true)
-    save && init_path(analysis_name)
-    f = method.grid
-    LLmatrix = reshape(f.LL_matrix, length(f.grid_values),length(f.grid_values),:) 
-    #Note: dim1 = beta, dim2 = alpha, so we transpose going in:
+function FIFEFUBAR(::Type{T} = Float64) where {T}
+    return FIFEFUBAR{T}()
+end
+
+function FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARgrid{T}; 
+    analysis_name = "fife_analysis", 
+    verbosity = 1, 
+    write = true,
+    positive_tail_only = false) where {T}
+    
+    LLmatrix = reshape(grid.LL_matrix, length(grid.grid_values), 
+                    length(grid.grid_values), :)
+                    
+    # Note: dim1 = beta, dim2 = alpha, so we transpose going in:
     stats = [interpolating_LRS(LLmatrix[:,:,i]') for i in 1:size(LLmatrix, 3)]
-    df_results = DataFrame([s[2] for s in stats])
-    df_results.site = 1:size(LLmatrix, 3)
-    df_results.α_alt .= f.grid_function.(df_results.α_alt)
-    df_results.β_alt .= f.grid_function.(df_results.β_alt)
-    df_results.αβ_null .= f.grid_function.(df_results.αβ_null)
-    save && CSV.write(analysis_name * "_results.csv", df_results)
+
+    # If using one-tailed test for positive selection only
+    if positive_tail_only
+        # For positive selection:
+        # - If α > β (not positive selection): p-value = 0.5
+        # - If β > α (potential positive selection): p-value = original p-value / 2
+        # This comes from the correct null distribution being a 50:50 mixture of a point mass at 0 and a Chi2(1) distribution
+        site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 0.5 for s in stats]
+    else
+        site_p_value = [s[2].p_value for s in stats]
+    end
+    
+    site_LRS = [s[2].LRS for s in stats]
+    ha_loglikelihood = [s[2].LL_alt for s in stats]
+    
+    fitted_alpha_ha = grid.grid_function.([s[2].α_alt for s in stats])
+    fitted_beta_ha = grid.grid_function.([s[2].β_alt for s in stats])
+    hzero_loglikelihood = [s[2].LL_null for s in stats]
+    fitted_rate_hzero = grid.grid_function.([s[2].αβ_null for s in stats])
+    
+    results = FrequentistFUBARResults{T}(
+        site_p_value,
+        site_LRS,
+        ha_loglikelihood,
+        fitted_alpha_ha,
+        fitted_beta_ha,
+        hzero_loglikelihood,
+        fitted_rate_hzero
+    )
+    if write
+        # save_fubar_results(results, analysis_name = analysis_name)
+    end
+    
+    return results
+end
+
+
+
+function tabulate_fubar_results(method::FIFEFUBAR{T},results::FrequentistFUBARResults; analysis_name = "fife_analysis", write = false) where {T}
+    n_sites = length(results.site_p_value)
+    
+    df_results = DataFrame(
+        site = 1:n_sites,
+        p_value = results.site_p_value,
+        LRS = results.site_LRS,
+        LL_alt = results.ha_loglikelihood,
+        α_alt = results.fitted_alpha_ha,
+        β_alt = results.fitted_beta_ha,
+        LL_null = results.hzero_loglikelihood,
+        αβ_null = results.fitted_rate_hzero,
+        sel = [p < 0.05 ? (b > a ? "Positive" : "Purifying") : "" 
+            for (p, a, b) in zip(results.site_p_value, results.fitted_alpha_ha, results.fitted_beta_ha)]
+    )
+
+    if write
+        init_path(analysis_name)
+        CSV.write(analysis_name * "_results.csv", df_results)
+    end
+
     return df_results
 end
 
-## HERE ENDS FIFE FUBAR

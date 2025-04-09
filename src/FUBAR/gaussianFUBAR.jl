@@ -239,70 +239,70 @@ function gaussian_sample_postprocessing(model::GaussianFUBARModel, θs; thinning
 end
 
 ## HERE BEGINS INTEGRATION WIH THE FUBAR INTERACE
-
-struct SKBDIFUBAR{T} <: FUBARMethod
-    grid::FUBARgrid{T}
-    distance_function::Function
-    kernel_function::Function
-    kernel_parameter_dimension::Int64
-    supression_type::Union{SupressionType, Nothing}
-    function SKBDIFUBAR{T}(grid::FUBARgrid; distance_function = standard_fubar_distance_function,
-                                            kernel_function = (d,c ) -> exp(-d / c^2),
-                                            kernel_parameter_dimension = 1,
-                                            supression_type = nothing) where {T}
-                                            return new{T}(grid, distance_function, kernel_function, 
-                                            kernel_parameter_dimension, supression_type)
+struct SKBDIFUBAR{T} <: BayesianFUBARMethod 
+    function SKBDIFUBAR{T}() where {T}
+        return new{T}()
     end
 end
-function SKBDIFUBAR(grid::FUBARgrid{T}; 
+
+function SKBDIFUBAR(::Type{T} = Float64) where {T}
+    return SKBDIFUBAR{T}()
+end
+
+function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T}; 
+    analysis_name = "", 
+    volume_scaling = 1.0,
+    write = true,
+    verbosity = 1,
+    posterior_threshold = 0.95,
     distance_function = standard_fubar_distance_function,
-    kernel_function = (d,c) -> exp(-d / c^2),
+    kernel_function = (d, c) -> exp(-d / c^2),
     kernel_parameter_dimension = 1,
-    supression_type = nothing) where {T}
-    return SKBDIFUBAR{T}(grid, 
+    supression_type = nothing,
+    m = 10, 
+    ϵ = 1e-6, 
+    n_samples = 1000, 
+    burnin = 200,
+    thinning = 50) where {T}
+
+    if isnothing(supression_type)
+        grid_dimension = length(grid.grid_values)
+        last_lower_triangular_index = grid_dimension * (grid_dimension - 1) / 2
+        supression_dimensions = accumulate((x, i) -> x + (grid_dimension - i),
+            0:(grid_dimension-1);
+            init=last_lower_triangular_index)
+        alphas = 0.1 .* [i for i in 0:(length(supression_dimensions)-1)]
+        betas = 0.1 .* [i for i in 1:(length(supression_dimensions))]
+
+        supression_type = SupressionType{T}(alphas, betas,
+            supression_dimensions,
+            quintic_smooth_transition)
+    end
+    
+    model = define_gaussian_model(grid, 
         distance_function = distance_function,
         kernel_function = kernel_function,
         kernel_parameter_dimension = kernel_parameter_dimension,
         supression_type = supression_type)
-end
 
+    samples = sample_gaussian_model(model, 
+        m = m, 
+        n_samples = n_samples,
+        burnin = burnin)
 
-function FUBAR_analysis(method::SKBDIFUBAR; analysis_name = "", 
-                                                volume_scaling = 1.0,
-                                                save = true,
-                                                verbosity = 1,
-                                                posterior_threshold = 0.95,
-                                                parameters = 
-                                                (m = 10, ϵ = 1e-6, n_samples = 1000, 
-                                                burnin = 200,
-                                                thinning = 50))
+    θ = gaussian_sample_postprocessing(model, samples; 
+        thinning = thinning, 
+        m = m)
 
-    model = define_gaussian_model(method.grid, distance_function = 
-                                                method.distance_function,
-                                                kernel_function = 
-                                                method.kernel_function,
-                                                kernel_parameter_dimension=
-                                                method.kernel_parameter_dimension,
-                                                supression_type = 
-                                                method.supression_type)
+    results = FUBAR_bayesian_postprocessing(θ, grid)
 
-    samples = sample_gaussian_model(model, m = parameters.m, 
-                                            n_samples = parameters.n_samples,
-                                            burnin = parameters.burnin)
-
-    θ = gaussian_sample_postprocessing(model, samples; thinning = 
-                                                parameters.thinning, 
-                                                m = parameters.m)
-
-    analysis = FUBAR_analysis(method.grid, θ, analysis_name = analysis_name,
-                                            posterior_threshold = 
-                                            posterior_threshold, 
-                                            volume_scaling = volume_scaling, 
-                                            save = save, verbosity = 
-                                            verbosity)
+    analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
+        
     return analysis, (θ = θ, )
 end
 
-
+function tabulate_fubar_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "skbdi_fubar_analysis", write = true)
+    return tabulate_fubar_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, write = write)
+end
 
 ## HERE ENDS INTEGRATION WITH THE FUBAR INTERACE
