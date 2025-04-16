@@ -54,6 +54,235 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
         annotate!(i, -length(sites)/2-0.55 -length(sites)/3000, Plots.text("$(omegagrid[i])", "black", :right, 9, rotation=90))
     end
 end
+
+function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
+    #A plot of the omega means for all sites.
+    omega1_means = [p[2] for p in param_means]
+    omega2_means = [p[3] for p in param_means]
+
+    t(x) = log10(x + 1)
+    invt(y) = 10^y - 1
+
+    omega1_means = t.(omega1_means)
+    omega2_means = t.(omega2_means)
+
+    for i in 1:length(omega1_means)
+        tc = "black"
+        if omega1_means[i] > omega2_means[i]
+            tc = tag_colors[1]
+        else
+            tc = tag_colors[2]
+        end
+
+        diff_mul = 1.0
+        if !(maximum(detections[i][1:2]) > pos_thresh)
+            diff_mul = 0.1
+        end
+
+        pos1_mul = 1.0
+        if !(detections[i][3] > pos_thresh)
+            pos1_mul = 0.15
+        end
+
+        pos2_mul = 1.0
+        if !(detections[i][4] > pos_thresh)
+            pos2_mul = 0.15
+        end
+        plot!([i, i], [omega1_means[i], omega2_means[i]], color=tc, alpha=0.75 * diff_mul, linewidth=2, xlim=(-4, num_sites + 5), label="", yscale=:log10)
+        scatter!([i], [omega1_means[i]], color=tag_colors[1], alpha=0.75 * pos1_mul, ms=2.5, label="", markerstrokecolor=:auto, yscale=:log10)
+        scatter!([i], [omega2_means[i]], color=tag_colors[2], alpha=0.75 * pos2_mul, ms=2.5, label="", markerstrokecolor=:auto, yscale=:log10)
+    end
+
+
+    scatter!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>1", ms=2.5)
+    scatter!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>1", ms=2.5)
+    plot!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>ω2", linewidth=2)
+    plot!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>ω1", linewidth=2)
+    plot!([-2, num_sites + 3], [log10(1.0 + 1), log10(1.0 + 1)], color="grey", alpha=0.5, label="ω=1", linestyle=:dot, linewidth=2)
+    xlabel!("Codon Sites")
+    ylabel!("ω")
+
+    n_points = 8
+    lb = 0.01
+    ub = 10
+    points = collect(t(lb):(t(ub)-t(lb))/(n_points-1):t(ub))
+    ticklabels = string.(round.(invt.(points), sigdigits=2))
+    yticks!(points, ticklabels)
+
+    xticks!(0:50:num_sites)
+
+    plot!(
+        legend=:outertop,
+        legendcolumns=5,
+        ylim=(0, log10(11)))
+
+end
+function plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
+    #TODO: update plots in docs
+    phylo_tree = get_phylo_tree(tree)
+    tagging = [tag_colors[model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
+    for node in nodeiter(phylo_tree)
+        renamenode!(phylo_tree, node, strip_tags_from_name(node.name))
+    end
+    #Warnings regarding marker- and linecolor also appear in the Phylo.jl docs example
+    #Note: sometimes long leafnames are truncated/not visible in the plot
+    pl = plot(phylo_tree,
+        showtips = true, tipfont = 6, markercolor = tagging, linecolor = tagging, markerstrokewidth = 0, size = (600, (120 + length(getleaflist(tree)) * 8)))
+    savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
+end
+function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
+    grid_size, num_sites = size(alloc_grid)
+
+    r(s) = round(s, digits=4)
+
+    detected_sites = Int64[]
+    group1_volumes = Vector{Float64}[]
+    group2_volumes = Vector{Float64}[]
+    alpha_volumes = Vector{Float64}[]
+    detections = Vector{Float64}[] #legacy name - now includes all 4 "relevant" site posteriors
+    param_means = Vector{Float64}[]
+
+    ω1 = [c[2] for c in codon_param_vec]
+    ω2 = [c[3] for c in codon_param_vec]
+    alphas = [c[1] for c in codon_param_vec]
+    ω1_greater_filt = ω1 .> ω2
+    ω2_greater_filt = ω2 .> ω1
+    ω1_pos_filt = ω1 .> 1.0
+    ω2_pos_filt = ω2 .> 1.0
+
+    verbosity > 0 && println("Step 5: Tabulating and plotting. Detected sites:")
+    for site in 1:num_sites
+        ω1_greater_posterior = sum(alloc_grid[ω1_greater_filt, site]) / sum(alloc_grid[:, site])
+        ω2_greater_posterior = sum(alloc_grid[ω2_greater_filt, site]) / sum(alloc_grid[:, site])
+        ω1_pos_posterior = sum(alloc_grid[ω1_pos_filt, site]) / sum(alloc_grid[:, site])
+        ω2_pos_posterior = sum(alloc_grid[ω2_pos_filt, site]) / sum(alloc_grid[:, site])
+        detecs = [ω1_greater_posterior, ω2_greater_posterior, ω1_pos_posterior, ω2_pos_posterior]
+
+        site_counts_ω1 = collapse_counts(ω1, alloc_grid[:, site], cases=omegagrid)
+        site_counts_ω2 = collapse_counts(ω2, alloc_grid[:, site], cases=omegagrid)
+        site_counts_alphas = collapse_counts(alphas, alloc_grid[:, site], cases=alphagrid)
+
+        mean_alpha = sum(site_counts_alphas .* alphagrid)
+        mean_ω1 = sum(site_counts_ω1 .* omegagrid)
+        mean_ω2 = sum(site_counts_ω2 .* omegagrid)
+
+        push!(detections, detecs)
+        push!(param_means, [mean_alpha, mean_ω1, mean_ω2])
+        push!(group1_volumes, site_counts_ω1)
+        push!(group2_volumes, site_counts_ω2)
+        push!(alpha_volumes, site_counts_alphas)
+
+        if maximum(detecs) > pos_thresh
+            verbosity > 0 && print("Site $(site) - ")
+            verbosity > 0 && print("P(ω1 > ω2):", ω1_greater_posterior)
+            verbosity > 0 && print("; P(ω2 > ω1):", ω2_greater_posterior)
+            verbosity > 0 && print("; P(ω1 > 1):", ω1_pos_posterior)
+            verbosity > 0 && println("; P(ω2 > 1):", ω2_pos_posterior)
+            push!(detected_sites, site)
+        end
+    end
+
+    #Exporting site data
+    df = DataFrame()
+    df[!, "Codon Sites"] = [1:num_sites;]
+    df[!, "P(ω1 > ω2)"] = [d[1] for d in detections]
+    df[!, "P(ω2 > ω1)"] = [d[2] for d in detections]
+    df[!, "P(ω1 > 1)"] = [d[3] for d in detections]
+    df[!, "P(ω2 > 1)"] = [d[4] for d in detections]
+    df[!, "mean(α)"] = [d[1] for d in param_means]
+    df[!, "mean(ω1)"] = [d[2] for d in param_means]
+    df[!, "mean(ω2)"] = [d[3] for d in param_means]
+
+    verbosity > 0 && println("\nIf exports = true, writing results for all sites to CSV: " * analysis_name * "_posteriors.csv")
+    exports && CSV.write(analysis_name * "_posteriors.csv", df)
+
+    sites = [1:num_sites;]
+
+    #Select the sites that will get plotted, in case you want to customize this.
+    if isnothing(sites_to_plot)
+        sites_to_plot = detected_sites
+    end
+
+    if length(sites_to_plot) == 0
+        verbosity > 0 && println("No sites detected above threshold.")
+    elseif exports
+        verbosity > 0 && println("Plotting alpha and omega distributions. If exports = true, saved as " * analysis_name * "_violin_*.pdf")
+
+        #Assumes alpha and omega grids are the same!? Currently enforced by args passed into difFUBAR_grid
+        #Maybe this is ok
+        grd = round.(omegagrid, digits=3)
+
+        #Three plotting examples.
+        #Plot the alphas for each flagged site
+
+        lmargin = 7 + length(sites_to_plot) / 2
+        ysize = 300 + 70 * length(sites[sites_to_plot])
+        #FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.75, grd, tag="α", color="green", x_label="α")
+        Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
+        FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot], grd, tag="α", color="green", x_label="α")
+        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+
+        savefig(analysis_name * "_violin_alpha.pdf")
+        Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
+
+        #Plot the G1 and G2 omegas
+        FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot], grd, tag="ω1", color=tag_colors[1])
+        FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot], grd, tag="ω2", color=tag_colors[2], x_label="ω")
+        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+
+        savefig(analysis_name * "_violin_omegas.pdf")
+        Plots.CURRENT_PLOT.nullableplot = nothing
+
+        #Plot all three parameters, using the v_offset to separate the alphas from the omegas
+        FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot] .* 0.5, grd, tag="ω1", color=tag_colors[1], v_offset=-0.1)
+        FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot] .* 0.5, grd, tag="ω2", color=tag_colors[2], v_offset=-0.1)
+        FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.5, grd, tag="α", color="green", v_offset=0.1)
+        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
+
+        savefig(analysis_name * "_violin_all_params.pdf")
+        Plots.CURRENT_PLOT.nullableplot = nothing
+
+        #Coerce the violin plot function to also viz the "detection" posteriors.
+        floored_detec = [clamp.((d .- 0.95) .* 20, 0.0, 1.0) for d in detections[sites_to_plot]]
+        println(sites_to_plot)
+        FUBAR_violin_plot(sites[sites_to_plot], [[f[1], 0.0, 0.0, 0.0] for f in floored_detec] .* 0.5,
+            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω1>ω2)", color=tag_colors[1],
+            vertical_ind=nothing, plot_legend=false)
+        FUBAR_violin_plot(sites[sites_to_plot], [[0.0, f[2], 0.0, 0.0] for f in floored_detec] .* 0.5,
+            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω2>ω1)", color=tag_colors[2],
+            vertical_ind=nothing, plot_legend=false)
+        FUBAR_violin_plot(sites[sites_to_plot], [[0.0, 0.0, f[3], 0.0] for f in floored_detec] .* 0.5,
+            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω1>1)", color=tag_colors[1],
+            vertical_ind=nothing, plot_legend=false)
+        FUBAR_violin_plot(sites[sites_to_plot], [[0.0, 0.0, 0.0, f[4]] for f in floored_detec] .* 0.5,
+            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω2>1)", color=tag_colors[2],
+            vertical_ind=nothing, legend_ncol=2, x_label="", plot_legend=false)
+
+        lmargin_detect = 12 + length(sites_to_plot) / 2
+
+        plot!(size=(800, ysize), margins=1Plots.cm, legend=false, grid=false,
+            ytickfont=18, bottom_margin=30mm, left_margin=(lmargin_detect)mm,
+            xtickfont=18)
+        println(length(sites_to_plot))
+
+        savefig(analysis_name * "_detections.pdf")
+        Plots.CURRENT_PLOT.nullableplot = nothing
+
+    end
+
+    if exports
+        Plots.CURRENT_PLOT.nullableplot = nothing
+        FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
+
+
+        xsize = 300 + 70 * length(sites[sites_to_plot])
+        plot!(size=(xsize, 300), margins=1.5Plots.cm, grid=false, legendfontsize=8)
+        savefig(analysis_name * "_site_omega_means.pdf")
+
+    end
+
+    return df
+end
 function violin_plots(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMolecularEvolution.BayesianFUBARResults;
     posterior_threshold=0.95,
     volume_scaling=1.0,
