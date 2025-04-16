@@ -77,22 +77,13 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
     if exports
-        #TODO: update plots in docs
-        phylo_tree = get_phylo_tree(tree)
-        tagging = [tag_colors[model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
-        for node in nodeiter(phylo_tree)
-            renamenode!(phylo_tree, node, strip_tags_from_name(node.name))
-        end
-        #Warnings regarding marker- and linecolor also appear in the Phylo.jl docs example
-        #Note: sometimes long leafnames are truncated/not visible in the plot
-        pl = plot(phylo_tree,
-            showtips = true, tipfont = 6, markercolor = tagging, linecolor = tagging, markerstrokewidth = 0, size = (600, (120 + length(getleaflist(tree)) * 8)))
-        savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
+        plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
     end
 
     #Tags and tag colors are now ordered, and tag_colors includes the untagged category
     return tree, tags, tag_colors, analysis_name
 end
+function plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name) return nothing end
 
 function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; verbosity=1, optimize_branch_lengths=false)
 
