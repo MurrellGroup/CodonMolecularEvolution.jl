@@ -1,8 +1,8 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, Measures, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo, LaTeXStrings, Random
-using NNlib, Distributions, Zygote, AdvancedHMC, LogDensityProblems, SimpleUnPack, AbstractMCMC, LogDensityProblemsAD, Interpolations, MCMCChains
-using PDMats, BenchmarkTools, ForwardDiff, Mooncake
+using FASTX, MolecularEvolution, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo, LaTeXStrings, Random
+using NNlib, Distributions,SimpleUnPack, AbstractMCMC, Interpolations, MCMCChains
+using PDMats, BenchmarkTools
 using EllipticalSliceSampling
 abstract type difFUBARGrid end
 
