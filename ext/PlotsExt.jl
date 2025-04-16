@@ -55,7 +55,7 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
     end
 end
 
-function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
+function CodonMolecularEvolution.FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
     #A plot of the omega means for all sites.
     omega1_means = [p[2] for p in param_means]
     omega2_means = [p[3] for p in param_means]
@@ -117,7 +117,7 @@ function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_s
         ylim=(0, log10(11)))
 
 end
-function plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
+function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
     #TODO: update plots in docs
     phylo_tree = get_phylo_tree(tree)
     tagging = [tag_colors[model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
@@ -130,7 +130,7 @@ function plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
         showtips = true, tipfont = 6, markercolor = tagging, linecolor = tagging, markerstrokewidth = 0, size = (600, (120 + length(getleaflist(tree)) * 8)))
     savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
 end
-function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
+function CodonMolecularEvolution.difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
     grid_size, num_sites = size(alloc_grid)
 
     r(s) = round(s, digits=4)

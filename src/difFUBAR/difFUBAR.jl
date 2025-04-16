@@ -221,7 +221,7 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
     exports && CSV.write(analysis_name * "_posteriors.csv", df)
 
     sites = [1:num_sites;]
-
+    
     return df
 end
 export difFUBAR_tabulate
