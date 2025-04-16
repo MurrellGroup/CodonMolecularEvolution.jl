@@ -12,7 +12,6 @@ include("difFUBAR/grids.jl")
 include("../test/benchmark_difFUBAR.jl")
 
 include("FUBAR/FUBAR.jl")
-include("smoothFUBAR/smoothFUBAR.jl")
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
@@ -24,7 +23,7 @@ export
     difFUBARTreesurgery,
     difFUBARTreesurgeryAndParallel,
     FUBAR,
-    smoothFUBAR,
+    # smoothFUBAR,
     dNdS,
     HBdNdS,
     std2maxdNdS,
@@ -35,13 +34,13 @@ export
     PiecewiseOUModel,
     shiftingHBviz,
     HBviz,
-    generate_RJGP_model,
-    reversible_slice_sampling,
-    plot_logposteriors_with_transitions,
+    # generate_RJGP_model,
+    # reversible_slice_sampling,
+    # plot_logposteriors_with_transitions,
     # gridplot,
-    define_gaussian_model,
-    sample_gaussian_model,
-    gaussian_sample_postprocessing,
+    # define_gaussian_model,
+    # sample_gaussian_model,
+    # gaussian_sample_postprocessing,
     FUBAR_analysis,
     SKBDIFUBAR,
     alphabetagrid,
