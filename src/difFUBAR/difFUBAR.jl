@@ -266,6 +266,22 @@ function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
     return alloc_grid, theta
 end
 
+export difFUBAR_tabulate
+"""
+    difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
+
+Takes the output of `difFUBAR` and tabulates the results. Returns a DataFrame of the detected sites.
+This function enables you to use the results of `difFUBAR` to tabulate the results with a different threshold.
+
+# Arguments
+- `analysis_name`: where to export the results.
+- `pos_thresh`: threshold of significance for the posteriors.
+- `alloc_grid`: contains the result of the Gibbs sampler.
+- `codon_param_vec`: vector of codon parameters from difFUBAR.
+- `alphagrid`: grid of alpha values.
+- `omegagrid`: grid of omega values.
+- `tag_colors`: colors of the tags.
+"""
 function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
     grid_size, num_sites = size(alloc_grid)
 
@@ -427,6 +443,8 @@ export difFUBAR
     difFUBAR(seqnames, seqs, treestring, tags, outpath; <keyword arguments>)
 
 Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysis.
+Returns `df, results_tuple` where `df` is a DataFrame of the detected sites and `results_tuple` is a tuple of the partial calculations needed to re-run `difFUBAR_tabulate`.
+Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores `(alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)`.
 
 # Arguments
 - `seqnames`: vector of untagged sequence names.
