@@ -119,12 +119,12 @@ function CodonMolecularEvolution.FUBAR_omega_plot(param_means, tag_colors, pos_t
         ylim=(0, log10(11)))
 
 end
-function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
+function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name; strip_tags_from_name = CodonMolecularEvolution.generate_tag_stripper(tags))
     #TODO: update plots in docs
     phylo_tree = get_phylo_tree(tree)
     tagging = [tag_colors[CodonMolecularEvolution.model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
     for node in nodeiter(phylo_tree)
-        renamenode!(phylo_tree, node, CodonMolecularEvolution.strip_tags_from_name(node.name))
+        renamenode!(phylo_tree, node, strip_tags_from_name(node.name))
     end
     #Warnings regarding marker- and linecolor also appear in the Phylo.jl docs example
     #Note: sometimes long leafnames are truncated/not visible in the plot
