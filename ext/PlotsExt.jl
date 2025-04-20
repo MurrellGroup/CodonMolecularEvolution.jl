@@ -160,9 +160,9 @@ function CodonMolecularEvolution.difFUBAR_tabulate(analysis_name, pos_thresh, al
         ω2_pos_posterior = sum(alloc_grid[ω2_pos_filt, site]) / sum(alloc_grid[:, site])
         detecs = [ω1_greater_posterior, ω2_greater_posterior, ω1_pos_posterior, ω2_pos_posterior]
 
-        site_counts_ω1 = collapse_counts(ω1, alloc_grid[:, site], cases=omegagrid)
-        site_counts_ω2 = collapse_counts(ω2, alloc_grid[:, site], cases=omegagrid)
-        site_counts_alphas = collapse_counts(alphas, alloc_grid[:, site], cases=alphagrid)
+        site_counts_ω1 = CodonMolecularEvolution.collapse_counts(ω1, alloc_grid[:, site], cases=omegagrid)
+        site_counts_ω2 = CodonMolecularEvolution.collapse_counts(ω2, alloc_grid[:, site], cases=omegagrid)
+        site_counts_alphas = CodonMolecularEvolution.collapse_counts(alphas, alloc_grid[:, site], cases=alphagrid)
 
         mean_alpha = sum(site_counts_alphas .* alphagrid)
         mean_ω1 = sum(site_counts_ω1 .* omegagrid)
