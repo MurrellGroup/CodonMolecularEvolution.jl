@@ -122,7 +122,7 @@ end
 function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
     #TODO: update plots in docs
     phylo_tree = get_phylo_tree(tree)
-    tagging = [tag_colors[model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
+    tagging = [tag_colors[CodonMolecularEvolution.model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
     for node in nodeiter(phylo_tree)
         renamenode!(phylo_tree, node, strip_tags_from_name(node.name))
     end
