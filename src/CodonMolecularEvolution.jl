@@ -1,6 +1,6 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, Phylo, LaTeXStrings, Random
+using FASTX, MolecularEvolution, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, LaTeXStrings, Random
 using NNlib, Distributions,SimpleUnPack, AbstractMCMC, Interpolations, MCMCChains
 using PDMats, BenchmarkTools
 using EllipticalSliceSampling
