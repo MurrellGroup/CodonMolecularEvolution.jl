@@ -276,7 +276,7 @@ function CodonMolecularEvolution.difFUBAR_tabulate(analysis_name, pos_thresh, al
 
     if exports
         Plots.CURRENT_PLOT.nullableplot = nothing
-        FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
+        CodonMolecularEvolution.FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
 
 
         xsize = 300 + 70 * length(sites[sites_to_plot])
@@ -312,12 +312,12 @@ function violin_plots(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMol
             maximum(results.posterior_beta[:, sites_positive]))
 
         # Plot alpha distributions for positively selected sites
-        FUBAR_violin_plot(sites_positive,
+        CodonMolecularEvolution.FUBAR_violin_plot(sites_positive,
             [s .* volume_scaling .* results.posterior_alpha[:, [i]] for i in sites_positive],
             grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
 
         # Plot beta distributions for positively selected sites
-        FUBAR_violin_plot(sites_positive,
+        CodonMolecularEvolution.FUBAR_violin_plot(sites_positive,
             [s .* volume_scaling .* results.posterior_beta[:, [i]] for i in sites_positive],
             grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
 
@@ -336,12 +336,12 @@ function violin_plots(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMol
             maximum(results.posterior_beta[:, sites_purifying]))
 
         # Plot alpha distributions for purifying selected sites
-        FUBAR_violin_plot(sites_purifying,
+        CodonMolecularEvolution.FUBAR_violin_plot(sites_purifying,
             [s .* volume_scaling .* results.posterior_alpha[:, [i]] for i in sites_purifying],
             grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
 
         # Plot beta distributions for purifying selected sites
-        FUBAR_violin_plot(sites_purifying,
+        CodonMolecularEvolution.FUBAR_violin_plot(sites_purifying,
             [s .* volume_scaling .* results.posterior_beta[:, [i]] for i in sites_purifying],
             grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
 
