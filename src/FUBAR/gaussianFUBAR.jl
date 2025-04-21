@@ -91,7 +91,8 @@ function kernel_sampling_ess(problem::AmbientESSProblem; m=10,
         m=m)
     post_burnin_samples = ambient_samples[(burnin+1):end]
     transformed_samples = sample_transformation_function.(post_burnin_samples)
-    return transformed_samples
+    kernel_parameter_samples = ambient_samples[(problem.gaussian_dimension+1):end]
+    return transformed_samples, kernel_parameter_samples
 end
 
 abstract type AmbientProblemModel end
@@ -296,19 +297,19 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         kernel_parameter_dimension = kernel_parameter_dimension,
         supression_type = supression_type)
 
-    samples = sample_gaussian_model(model, 
+    samples, kernel_samples = sample_gaussian_model(model, 
         m = m, 
         n_samples = n_samples,
         burnin = burnin)
 
-    postprocessing_function = x -> gaussian_sample_postprocessing(model, x; 
+    θ = gaussian_sample_postprocessing(model, samples; 
         thinning = thinning, 
         m = m)
 
     results = FUBAR_bayesian_postprocessing(samples, grid, sample_postprocessing = postprocessing_function)
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
-    return analysis, (θ = samples, )
+    return analysis, (θ = θ, )
 end
 
 function tabulate_fubar_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "skbdi_fubar_analysis", write = true)
