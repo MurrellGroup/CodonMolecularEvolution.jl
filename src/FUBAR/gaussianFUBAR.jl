@@ -308,7 +308,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
     results = FUBAR_bayesian_postprocessing(samples, grid, sample_postprocessing = postprocessing_function)
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
-    return analysis, (θ = θ, )
+    return analysis, (θ = samples, )
 end
 
 function tabulate_fubar_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "skbdi_fubar_analysis", write = true)
