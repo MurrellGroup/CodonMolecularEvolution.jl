@@ -93,7 +93,7 @@ struct BayesianFUBARResults{T} <: FUBARResults
     posterior_alpha::Matrix{T}
     posterior_beta::Matrix{T}
     posterior_mean::Vector{T}
-    theta_chain::Union{Nothing, Vector{T}}
+    theta_chain::Union{Nothing, Vector{Vector{T}}}
 end
 
 # For some Bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
