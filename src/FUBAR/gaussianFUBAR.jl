@@ -301,13 +301,11 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         n_samples = n_samples,
         burnin = burnin)
 
-    θ = gaussian_sample_postprocessing(model, samples; 
+    postprocessing_function = x -> gaussian_sample_postprocessing(model, x; 
         thinning = thinning, 
         m = m)
 
-    results = FUBAR_bayesian_postprocessing(θ, grid)
-    println(typeof(samples))
-    results.theta_chain = samples
+    results = FUBAR_bayesian_postprocessing(samples, grid, sample_postprocessing = postprocessing_function)
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
     return analysis, (θ = θ, )

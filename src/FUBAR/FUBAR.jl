@@ -98,8 +98,8 @@ end
 
 # For some Bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
 
-function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARgrid{T}) where {T}
-    θ = mean(θs)
+function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARgrid{T}; sample_postprocessing = x -> x) where {T}
+    θ = mean(sample_postprocessing(θs))
     results = FUBAR_bayesian_postprocessing(θ, grid)
     results.theta_chain = θs
     return results
