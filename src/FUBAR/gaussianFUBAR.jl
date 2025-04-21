@@ -53,7 +53,7 @@ function kernel_sampling_ess(problem::AmbientESSProblem; m=10,
     n_samples=1000,
     burnin=200,
     progress=false)
-    
+
     distance_matrix = generate_distance_matrix(problem)
     loglikelihood = prior_only ? θ -> 0 : θ -> problem.loglikelihood(
         transform_sample(
@@ -293,7 +293,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         m = m)
 
     results = FUBAR_bayesian_postprocessing(θ, grid)
-
+    results.theta_chain = samples
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
     return analysis, (θ = θ, )

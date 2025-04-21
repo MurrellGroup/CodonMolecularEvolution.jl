@@ -369,7 +369,7 @@ end
 
 function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid, analysis_name)
     
-
+    println(length(results.theta_chain[1]))
 
 end
 
