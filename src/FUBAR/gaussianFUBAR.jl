@@ -37,9 +37,6 @@ function transform_sample(problem::AmbientESSProblem, θ::AbstractVector,
     kernel_parameters = θ[(problem.gaussian_dimension+1):end]
     kernel_function = x -> problem.kernel_function(x, kernel_parameters...)
     kernel_matrix = kernel_function.(distance_matrix) + ϵ * I
-    # println("Check: The kernel matrix is symmetric: ",issymmetric(kernel_matrix))
-    # println("Check: The kernel matrix is positive definite: ",isposdef(kernel_matrix))
-    # println("Spectrum of the kernel matrix: ",eigvals(kernel_matrix))
     ambient_gaussian_parameters = θ[1:problem.gaussian_dimension]
     transformed_θ = krylov_sqrt_times_vector(kernel_matrix,
         ambient_gaussian_parameters, m=m)
@@ -56,15 +53,16 @@ function kernel_sampling_ess(problem::AmbientESSProblem; m=10,
     n_samples=1000,
     burnin=200,
     progress=false)
+    
     distance_matrix = generate_distance_matrix(problem)
     loglikelihood = prior_only ? θ -> 0 : θ -> problem.loglikelihood(
         transform_sample(
             problem, θ,
             distance_matrix, m=m))
     # We have to have μ0=0 since otherwise we would have to re-define the prior 
-    # for every choice of kernel parameter
+    # for every choice of kernel parameter, 
     total_dimension = problem.gaussian_dimension +
-                      problem.kernel_parameter_dimension
+                    problem.kernel_parameter_dimension
     μ0 = zeros(total_dimension)
     Σ0 = diagm(ones(total_dimension))
     prior = MvNormal(μ0, Σ0)

@@ -312,12 +312,12 @@ function violin_plots(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMol
             maximum(results.posterior_beta[:, sites_positive]))
 
         # Plot alpha distributions for positively selected sites
-        CodonMolecularEvolution.FUBAR_violin_plot(sites_positive,
+        FUBAR_violin_plot(sites_positive,
             [s .* volume_scaling .* results.posterior_alpha[:, [i]] for i in sites_positive],
             grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
 
         # Plot beta distributions for positively selected sites
-        CodonMolecularEvolution.FUBAR_violin_plot(sites_positive,
+        FUBAR_violin_plot(sites_positive,
             [s .* volume_scaling .* results.posterior_beta[:, [i]] for i in sites_positive],
             grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
 
@@ -336,12 +336,12 @@ function violin_plots(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMol
             maximum(results.posterior_beta[:, sites_purifying]))
 
         # Plot alpha distributions for purifying selected sites
-        CodonMolecularEvolution.FUBAR_violin_plot(sites_purifying,
+        FUBAR_violin_plot(sites_purifying,
             [s .* volume_scaling .* results.posterior_alpha[:, [i]] for i in sites_purifying],
             grd, tag="α", color="blue", legend_ncol=2, vertical_ind=nothing)
 
         # Plot beta distributions for purifying selected sites
-        CodonMolecularEvolution.FUBAR_violin_plot(sites_purifying,
+        FUBAR_violin_plot(sites_purifying,
             [s .* volume_scaling .* results.posterior_beta[:, [i]] for i in sites_purifying],
             grd, tag="β", color="red", legend_ncol=2, vertical_ind=nothing)
 
@@ -355,7 +355,6 @@ end
 function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.DefaultBayesianFUBARMethod, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="bayesian_analysis", write=false)
     posterior_mean_plot = gridplot(grid, results)
     positive_violin_plot, purifying_violin_plot = violin_plots(grid, results)
-    println("Yay we executed the loaded plotting fn")
     if write
         savefig(posterior_mean_plot, analysis_name*"_posterior_mean.pdf")
         if !isnothing(positive_violin_plot)
@@ -367,12 +366,18 @@ function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolut
     end
     return posterior_mean_plot, violin_plots
 end
-function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="bayesian_analysis", write=false)
-    print("Executing plotting skbdi")
+
+function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid, analysis_name)
+    
+
+
+end
+
+function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="skbdi_analysis", write=false, diagnostics = true)
+    plot_skbdi_mixing(results, grid, analysis_name)
     CodonMolecularEvolution.plot_fubar_results(CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, write=write)
 end
-function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="bayesian_analysis", write=false)
-    println("Executing plotting dirichlet")
+function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="dirichlet_analysis", write=false, diagnostics = false)
     CodonMolecularEvolution.plot_fubar_results(CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, write=write)
 end
 

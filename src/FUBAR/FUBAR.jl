@@ -142,7 +142,7 @@ function tabulate_fubar_results(method::DefaultBayesianFUBARMethod, results::Bay
     end
     return df_results
 end
-function plot_fubar_results(method::FUBARMethod, results::FUBARResults, grid::FUBARgrid; analysis_name = "fubar_analysis", write = false) end
+function plot_fubar_results(method::FUBARMethod, results::FUBARResults, grid::FUBARgrid; analysis_name = "fubar_analysis", write = false, diagnostics = false) end
 
 # SKBDI - Smooth Kernel Based Density Inference
 
