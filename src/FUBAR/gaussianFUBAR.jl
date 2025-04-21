@@ -306,7 +306,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         thinning = thinning, 
         m = m)
 
-    results = FUBAR_bayesian_postprocessing(samples, grid, sample_postprocessing = postprocessing_function)
+    results = FUBAR_bayesian_postprocessing(samples, grid)
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
     return analysis, (θ = θ, )
