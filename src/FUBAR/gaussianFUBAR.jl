@@ -31,8 +31,23 @@ function transform_sample(problem::AmbientESSProblem, θ::AbstractVector;
     return transform_sample(problem, θ, distance_matrix, m=m)
 end
 # Epsilon is Tykhonoff regularisation
+
+function krylov_sqrt_times_vector(A,v; m = 15)
+    lanczos_iterator = LanczosIterator(A,v)
+    factorization = initialize(lanczos_iterator)
+    while length(factorization) < m
+        expand!(lanczos_iterator, factorization)
+    end
+    Qm = basis(factorization) 
+    Qm_matrix = hcat([Qm[i] for i in 1:length(Qm)]...)
+    Tm = rayleighquotient(factorization)  
+    Tm_sqrt_firstcol = sqrt(Tm) * Tm_sqrt[:, 1]
+    return norm(v) * (Qm_matrix * Tm_sqrt_firstcol)
+end
+
+
 function transform_sample(problem::AmbientESSProblem, θ::AbstractVector,
-    distance_matrix::AbstractMatrix; m=10, ϵ=1e-6)
+    distance_matrix::AbstractMatrix; m=15, ϵ=1e-6)
     # All kernel parameters are at the end
     kernel_parameters = θ[(problem.gaussian_dimension+1):end]
     kernel_function = x -> problem.kernel_function(x, kernel_parameters...)

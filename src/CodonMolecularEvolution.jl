@@ -4,6 +4,7 @@ using FASTX, MolecularEvolution, StatsBase, Distributions, DataFrames, CSV, NLop
 using NNlib, Distributions,SimpleUnPack, AbstractMCMC, Interpolations, MCMCChains
 using PDMats, BenchmarkTools
 using EllipticalSliceSampling
+using KrylovKit
 abstract type difFUBARGrid end
 
 include("shared/shared.jl")
@@ -15,7 +16,6 @@ include("FUBAR/FUBAR.jl")
 include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
-include("FUBAR/krylov.jl")
 include("FUBAR/grid_utilities.jl")
 export 
     difFUBARBaseline,
