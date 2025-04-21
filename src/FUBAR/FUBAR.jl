@@ -101,7 +101,7 @@ end
 function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARgrid{T}; sample_postprocessing = x -> x) where {T}
     θ = sample_postprocessing(θs)
     results = FUBAR_bayesian_postprocessing(θ, grid)
-    return BayesianFUBARResults(results.positive_posterior, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs)
+    return BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs)
 end
 
 function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARgrid{T}) where {T}
