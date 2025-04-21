@@ -41,7 +41,7 @@ function krylov_sqrt_times_vector(A,v; m = 15)
     Qm = basis(factorization) 
     Qm_matrix = hcat([Qm[i] for i in 1:length(Qm)]...)
     Tm = rayleighquotient(factorization)  
-    Tm_sqrt_firstcol = sqrt(Tm) * Tm_sqrt[:, 1]
+    Tm_sqrt_firstcol = sqrt(Tm)[:,1]
     return norm(v) * (Qm_matrix * Tm_sqrt_firstcol)
 end
 
