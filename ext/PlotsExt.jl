@@ -40,13 +40,13 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
 
     bar!([-10], [1], bottom=[1000], color=color, alpha=alpha, label=tag, linewidth=0, bar_edges=false, linealpha=0.0)
     bar!(yticks=(ypos, ["       " for _ in sites]), xticks=((1:length(omegagrid)), ["       " for _ in 1:length(omegagrid)]), xrotation=90)
-    annotate!(length(omegagrid)/2, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
-    annotate!(-4.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
+    annotate!(length(omegagrid) / 2, -length(sites) / 2 - (2.0 + (length(sites) / 500)), Plots.text(x_label, "black", :center, 10))
+    annotate!(-4.5, -(length(sites) + 1) / 4, Plots.text(y_label, "black", :center, 10, rotation=90))
 
-    bar!(ylim=(minimum(ypos) - 0.5, maximum(ypos) + 0.5), xlim = (0, length(omegagrid) + 1))
+    bar!(ylim=(minimum(ypos) - 0.5, maximum(ypos) + 0.5), xlim=(0, length(omegagrid) + 1))
     if plot_legend
         plot!(
-            legend=(0.5, 1+1.5/(50+length(sites))),
+            legend=(0.5, 1 + 1.5 / (50 + length(sites))),
             legendcolumns=legend_ncol,
             shadow=true, fancybox=true,
         )
@@ -54,8 +54,8 @@ function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
     for i in 1:length(sites)
         annotate!(-0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
     end
-    for i in 1:length(omegagrid) 
-        annotate!(i, -length(sites)/2-0.55 -length(sites)/3000, Plots.text("$(omegagrid[i])", "black", :right, 9, rotation=90))
+    for i in 1:length(omegagrid)
+        annotate!(i, -length(sites) / 2 - 0.55 - length(sites) / 3000, Plots.text("$(omegagrid[i])", "black", :right, 9, rotation=90))
     end
 end
 
@@ -121,7 +121,7 @@ function CodonMolecularEvolution.FUBAR_omega_plot(param_means, tag_colors, pos_t
         ylim=(0, log10(11)))
 
 end
-function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name; strip_tags_from_name = CodonMolecularEvolution.generate_tag_stripper(tags))
+function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name; strip_tags_from_name=CodonMolecularEvolution.generate_tag_stripper(tags))
     #TODO: update plots in docs
     phylo_tree = get_phylo_tree(tree)
     tagging = [tag_colors[CodonMolecularEvolution.model_ind(n, tags)] for n in nodenameiter(phylo_tree)]
@@ -131,7 +131,7 @@ function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, 
     #Warnings regarding marker- and linecolor also appear in the Phylo.jl docs example
     #Note: sometimes long leafnames are truncated/not visible in the plot
     pl = plot(phylo_tree,
-        showtips = true, tipfont = 6, markercolor = tagging, linecolor = tagging, markerstrokewidth = 0, size = (600, (120 + length(getleaflist(tree)) * 8)))
+        showtips=true, tipfont=6, markercolor=tagging, linecolor=tagging, markerstrokewidth=0, size=(600, (120 + length(getleaflist(tree)) * 8)))
     savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
 end
 function CodonMolecularEvolution.difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
@@ -356,28 +356,68 @@ function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolut
     posterior_mean_plot = gridplot(grid, results)
     positive_violin_plot, purifying_violin_plot = violin_plots(grid, results)
     if write
-        savefig(posterior_mean_plot, analysis_name*"_posterior_mean.pdf")
+        savefig(posterior_mean_plot, analysis_name * "_posterior_mean.pdf")
         if !isnothing(positive_violin_plot)
-            savefig(positive_violin_plot, analysis_name*"_positive_violin.pdf")
+            savefig(positive_violin_plot, analysis_name * "_positive_violin.pdf")
         end
         if !isnothing(purifying_violin_plot)
-            savefig(purifying_violin_plot, analysis_name*"_purifying_violin.pdf")
+            savefig(purifying_violin_plot, analysis_name * "_purifying_violin.pdf")
         end
     end
     return posterior_mean_plot, violin_plots
 end
 
-function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid, analysis_name)
-    
-    println(length(results.theta_chain[1]))
+function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults,
+    grid::CodonMolecularEvolution.FUBARgrid,
+    analysis_name::String)
 
+
+    kernel_params = results.kernel_parameters
+
+    if isempty(kernel_params)
+        println("No kernel parameters found.")
+        return nothing
+    end
+
+    num_samples = length(kernel_params)
+    num_dims = length(kernel_params[1])
+
+
+    param_matrix = zeros(num_samples, num_dims)
+    for i in 1:num_samples
+        for j in 1:num_dims
+            param_matrix[i, j] = kernel_params[i][j]
+        end
+    end
+
+
+
+    p = plot(layout=(2, num_dims), size=(300 * num_dims, 600),
+        legend=false, title="Kernel Bandwidth Parameters - $analysis_name")
+
+
+    for j in 1:num_dims
+
+        plot!(p[j], 1:num_samples, param_matrix[:, j],
+            title="Dimension $j Trace",
+            xlabel="Sample", ylabel="Value",
+            linewidth=1, color=j)
+
+
+        histogram!(p[j+num_dims], param_matrix[:, j],
+            title="Dimension $j Posterior",
+            xlabel="Value", ylabel="Frequency",
+            bins=round(Int, sqrt(num_samples)), 
+            color=j, alpha=0.7)
+    end
+    savefig(p, "$(analysis_name)_kernel_bandwidth_mixing.pdf")
+    return p
 end
-
-function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="skbdi_analysis", write=false, diagnostics = true)
+function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="skbdi_analysis", write=false, diagnostics=true)
     plot_skbdi_mixing(results, grid, analysis_name)
     CodonMolecularEvolution.plot_fubar_results(CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, write=write)
 end
-function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="dirichlet_analysis", write=false, diagnostics = false)
+function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="dirichlet_analysis", write=false, diagnostics=false)
     CodonMolecularEvolution.plot_fubar_results(CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, write=write)
 end
 
