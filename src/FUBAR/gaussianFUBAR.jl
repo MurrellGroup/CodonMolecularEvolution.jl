@@ -293,6 +293,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         m = m)
 
     results = FUBAR_bayesian_postprocessing(θ, grid)
+    println(samples)
     results.theta_chain = samples
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
