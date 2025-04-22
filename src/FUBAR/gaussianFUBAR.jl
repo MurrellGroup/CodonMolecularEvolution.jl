@@ -246,8 +246,7 @@ end
 function gaussian_sample_postprocessing(model::GaussianFUBARModel, θs; thinning=100, m=10)
     thinned_samples = θs[1:thinning:end]
     grid_samples = [supress_vector(model.supression_type, θ)[model.ambient_to_fubar_permutation_vector] for θ in thinned_samples]
-    posterior_mean = mean(grid_samples)
-    return posterior_mean
+    return grid_samples
 end
 
 ## HERE BEGINS INTEGRATION WIH THE FUBAR INTERACE
@@ -306,7 +305,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         thinning = thinning, 
         m = m)
 
-    results = FUBAR_bayesian_postprocessing(samples, grid, kernel_samples)
+    results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples)
     analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
     plot_fubar_results(method, results, grid, analysis_name = analysis_name, write = write)   
     return analysis, (θ = θ, )
