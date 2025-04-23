@@ -287,7 +287,35 @@ end
 function FIFEFUBAR(::Type{T} = Float64) where {T}
     return FIFEFUBAR{T}()
 end
+"""
+    FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARgrid{T};
+                analysis_name = "fife_analysis",
+                verbosity = 1,
+                write = true,
+                positive_tail_only = false) where {T}
 
+Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolution) approach.
+
+# Arguments
+- `method::FIFEFUBAR{T}`: Empty struct to dispatch on
+- `grid::FUBARgrid{T}`: Grid containing data to perform inference on
+
+# Keywords
+- `analysis_name::String="fife_analysis"`: Name for the analysis output files and directory
+- `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
+- `write::Bool=true`: Whether to write results to files
+- `positive_tail_only::Bool=false`: If true, uses a one-tailed test for positive selection only
+
+# Returns
+- `results::FrequentistFUBARResults{T}`: A struct containing the frequentist analysis results
+
+# Description
+Frequentist method that gives p-values for site-wise alpha/beta tests
+
+This function performs likelihood ratio tests at each site using interpolated likelihood surfaces.
+When `positive_tail_only=true`, the p-values are adjusted to reflect a one-tailed test that only 
+considers positive selection (β > α) by using a dirac delta/Chi-square mixture
+"""
 function FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARgrid{T}; 
     analysis_name = "fife_analysis", 
     verbosity = 1, 

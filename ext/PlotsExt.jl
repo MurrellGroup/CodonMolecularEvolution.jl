@@ -391,7 +391,7 @@ function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults
     end
 
 
-    #=
+    
      p = plot(layout=(2, num_dims), size=(300 * num_dims, 600),
         legend=false, title="Kernel Bandwidth Parameters - $analysis_name")
 
@@ -409,7 +409,7 @@ function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults
     end
     savefig(p, "$(analysis_name)_kernel_bandwidth_mixing.pdf")
     return p
-    =#
+    
 end
 function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="skbdi_analysis", write=false, diagnostics=true)
     plot_skbdi_mixing(results, grid, analysis_name)
