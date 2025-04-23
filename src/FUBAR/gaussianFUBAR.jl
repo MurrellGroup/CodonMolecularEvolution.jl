@@ -261,20 +261,20 @@ function SKBDIFUBAR(::Type{T} = Float64) where {T}
 end
 """
     FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
-                  analysis_name = "skbdi_fubar_analysis",
-                  volume_scaling = 1.0,
-                  write = true,
-                  verbosity = 1,
-                  posterior_threshold = 0.95,
-                  distance_function = standard_fubar_distance_function,
-                  kernel_function = (d, c) -> exp(-d / c^2),
-                  kernel_parameter_dimension = 1,
-                  supression_type = nothing,
-                  m = 10,
-                  ϵ = 1e-6,
-                  n_samples = 1000,
-                  burnin = 200,
-                  thinning = 50) where {T}
+                analysis_name = "skbdi_fubar_analysis",
+                volume_scaling = 1.0,
+                write = true,
+                verbosity = 1,
+                posterior_threshold = 0.95,
+                distance_function = standard_fubar_distance_function,
+                kernel_function = (d, c) -> exp(-d / c^2),
+                kernel_parameter_dimension = 1,
+                supression_type = nothing,
+                m = 15,
+                ϵ = 1e-6,
+                n_samples = 1000,
+                burnin = 200,
+                thinning = 50) where {T}
 
 Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the SKBDI (Smooth Kernel Bayesian Density Inference) approach.
 
@@ -290,18 +290,18 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the S
 - `posterior_threshold::Float64=0.95`: Posterior probability threshold for classification
 - `distance_function=standard_fubar_distance_function`: Function used to calculate distances between grid points
 - `kernel_function=(d, c) -> exp(-d / c^2)`: Kernel function used for the covariance matrix. 
-- `kernel_parameter_dimension::Int=1`: [DESCRIPTION]
+- `kernel_parameter_dimension::Int=1`: How many kernel parameters are taken in by the kernel bandwidth function. 
 - `supression_type=nothing`: Supression type object; if nothing, a default supression type is constructed
-- `m::Int=10`: [DESCRIPTION]
-- `ϵ::Float64=1e-6`: [DESCRIPTION]
+- `m::Int=10`: Krylov subspace dimension, 15 seems to work well for standard grids. Larger m gives slower sampling but better numerical precision.
+- `ϵ::Float64=1e-6`: Tykhonoff regularisation
 - `n_samples::Int=1000`: Number of MCMC samples to generate
 - `burnin::Int=200`: Number of initial samples to discard as burnin
 - `thinning::Int=50`: Interval for thinning samples to reduce autocorrelation
 
 # Returns
 - A tuple containing:
-  - `analysis`: DataFrame with FUBAR analysis results
-  - `θ`: Thinned transformed grid samples from the chain
+    - `analysis`: DataFrame with FUBAR analysis results
+    - `θ`: Thinned transformed grid samples from the chain
 
 # Description
 
