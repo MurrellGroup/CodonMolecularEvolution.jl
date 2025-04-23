@@ -91,7 +91,7 @@ function kernel_sampling_ess(problem::AmbientESSProblem; m=10,
         m=m)
     post_burnin_samples = ambient_samples[(burnin+1):end]
     transformed_samples = sample_transformation_function.(post_burnin_samples)
-    kernel_parameter_samples = ambient_samples[(problem.gaussian_dimension+1):end]
+    kernel_parameter_samples = [ambient_samples[i][(problem.gaussian_dimension+1):end] for i in eachindex(ambient_samples)]
     return transformed_samples, kernel_parameter_samples
 end
 
