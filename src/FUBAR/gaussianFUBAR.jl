@@ -259,7 +259,58 @@ end
 function SKBDIFUBAR(::Type{T} = Float64) where {T}
     return SKBDIFUBAR{T}()
 end
+"""
+    FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
+                  analysis_name = "skbdi_fubar_analysis",
+                  volume_scaling = 1.0,
+                  write = true,
+                  verbosity = 1,
+                  posterior_threshold = 0.95,
+                  distance_function = standard_fubar_distance_function,
+                  kernel_function = (d, c) -> exp(-d / c^2),
+                  kernel_parameter_dimension = 1,
+                  supression_type = nothing,
+                  m = 10,
+                  ϵ = 1e-6,
+                  n_samples = 1000,
+                  burnin = 200,
+                  thinning = 50) where {T}
 
+Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the SKBDI (Smooth Kernel Bayesian Density Inference) approach.
+
+# Arguments
+- `method::SKBDIFUBAR{T}`: Empty struct used for dispatch
+- `grid::FUBARgrid{T}`: Grid to perform inference on
+
+# Keywords
+- `analysis_name::String="skbdi_fubar_analysis"`: Name for the analysis output files and directory
+- `volume_scaling::Float64=1.0`: ?
+- `write::Bool=true`: Whether to write results to files
+- `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
+- `posterior_threshold::Float64=0.95`: Posterior probability threshold for classification
+- `distance_function=standard_fubar_distance_function`: Function used to calculate distances between grid points
+- `kernel_function=(d, c) -> exp(-d / c^2)`: Kernel function used for the covariance matrix. 
+- `kernel_parameter_dimension::Int=1`: [DESCRIPTION]
+- `supression_type=nothing`: Supression type object; if nothing, a default supression type is constructed
+- `m::Int=10`: [DESCRIPTION]
+- `ϵ::Float64=1e-6`: [DESCRIPTION]
+- `n_samples::Int=1000`: Number of MCMC samples to generate
+- `burnin::Int=200`: Number of initial samples to discard as burnin
+- `thinning::Int=50`: Interval for thinning samples to reduce autocorrelation
+
+# Returns
+- A tuple containing:
+  - `analysis`: DataFrame with FUBAR analysis results
+  - `θ`: Thinned transformed grid samples from the chain
+
+# Description
+
+This function implements a Smooth Kernel Bayesian Density Inference approach to FUBAR analysis. 
+It defines a Gaussian model based on the grid, samples from this model using MCMC, 
+and processes the samples to generate posterior probabilities of selection.
+
+If no supression type is provided, a default one is constructed based on the grid dimensions
+with a fifth degree polynomial is used"""
 function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T}; 
     analysis_name = "skbdi_fubar_analysis", 
     volume_scaling = 1.0,
