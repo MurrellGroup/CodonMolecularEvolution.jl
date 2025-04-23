@@ -164,6 +164,44 @@ function DirichletFUBAR(::Type{T} = Float64) where {T}
     return DirichletFUBAR{T}()
 end
 
+
+"""
+    FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T};
+                  analysis_name = "dirichlet_fubar_analysis",
+                  write = true,
+                  posterior_threshold = 0.95,
+                  verbosity = 1,
+                  code = MolecularEvolution.universal_code,
+                  optimize_branch_lengths = false,
+                  concentration = 0.5,
+                  iterations = 2500,
+                  volume_scaling = 1.0) where {T}
+
+Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dirichlet process.
+
+# Arguments
+- `method::DirichletFUBAR{T}`: Empty struct to dispatch the original FUBAR method 
+- `grid::FUBARgrid{T}`: the FUBARgrid to perform inference on
+
+# Keywords
+- `analysis_name::String="dirichlet_fubar_analysis"`: File names
+- `write::Bool=true`: Whether to write results to files. Will plot if MolecularEvolutionViz is present
+- `posterior_threshold::Float64=0.95`: Posterior probability classification threshold for 
+- `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
+- `code=MolecularEvolution.universal_code`: Molecular code to use
+- `optimize_branch_lengths::Bool=false`: ?
+- `concentration::Float64=0.5`: Concentration parameter for the Dirichlet process
+- `iterations::Int=2500`: Number of EM algorithm iterations
+- `volume_scaling::Float64=1.0`: ?
+
+# Returns
+- A tuple containing:
+  - `df_results`: DataFrame with FUBAR analysis results
+  - `θ`: Parameter estimates from the EM algorithm
+
+# Description
+Takes in a FUBARgrid object and outputs results for sites obtained from the FUBAR method 
+"""
 function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T}; 
     analysis_name = "dirichlet_fubar_analysis",
     write = true,

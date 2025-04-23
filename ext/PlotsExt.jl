@@ -381,7 +381,7 @@ function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults
 
     num_samples = length(kernel_params)
     num_dims = length(kernel_params[1])
-
+    println("Kernel parameter dimension: ",num_dims)
 
     param_matrix = zeros(num_samples, num_dims)
     for i in 1:num_samples
@@ -391,19 +391,16 @@ function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults
     end
 
 
-
-    p = plot(layout=(2, num_dims), size=(300 * num_dims, 600),
+    #=
+     p = plot(layout=(2, num_dims), size=(300 * num_dims, 600),
         legend=false, title="Kernel Bandwidth Parameters - $analysis_name")
 
 
     for j in 1:num_dims
-
         plot!(p[j], 1:num_samples, param_matrix[:, j],
             title="Dimension $j Trace",
             xlabel="Sample", ylabel="Value",
             linewidth=1, color=j)
-
-
         histogram!(p[j+num_dims], param_matrix[:, j],
             title="Dimension $j Posterior",
             xlabel="Value", ylabel="Frequency",
@@ -412,6 +409,7 @@ function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults
     end
     savefig(p, "$(analysis_name)_kernel_bandwidth_mixing.pdf")
     return p
+    =#
 end
 function CodonMolecularEvolution.plot_fubar_results(method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="skbdi_analysis", write=false, diagnostics=true)
     plot_skbdi_mixing(results, grid, analysis_name)
