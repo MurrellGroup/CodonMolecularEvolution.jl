@@ -32,6 +32,7 @@ using MolecularEvolution, FASTX, CodonMolecularEvolution
 We perform FUBAR analysis on [this FASTA file](https://raw.githubusercontent.com/MurrellGroup/CodonMolecularEvolution.jl/main/test/data/Ace2_with_bat/Ace2_with_bat.fasta), and a phylogeny from [this Newick tree file](https://raw.githubusercontent.com/MurrellGroup/CodonMolecularEvolution.jl/main/test/data/Ace2_with_bat/Ace2_with_bat.tre).
 ```julia
 # Read data
+outdir = "fubar"
 seqnames, seqs = read_fasta("Ace2_with_bat.fasta")
 treestring = readlines("Ace2_with_bat.tre")[1]
 # Perform analysis
