@@ -7,6 +7,6 @@ For each plotting function, foo, we:
 
 function plot_tagged_phylo_tree(args...; kwargs...) end
 
-function plot_fubar_results(args...; kwargs...) end
+function FUBAR_plot_results(args...; kwargs...) end
 
 function difFUBAR_plot_results(args...; kwargs...) end

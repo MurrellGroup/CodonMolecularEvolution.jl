@@ -24,7 +24,7 @@ struct DefaultBayesianFUBARMethod <: BayesianFUBARMethod end
 
 FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", write=false) = nothing
 
-function tabulate_fubar_results(method::FUBARMethod,results::FUBARResults; analysis_name = "", write = false) end
+function FUBAR_tabulate_results(method::FUBARMethod,results::FUBARResults; analysis_name = "", write = false) end
 
 # Specific functions that are shared
 
@@ -128,7 +128,7 @@ function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARgrid{T}) where 
 end
 
 
-function tabulate_fubar_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "bayesian_analysis", write = false)
+function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "bayesian_analysis", write = false)
     
     df_results = DataFrame(site=1:size(grid.cond_lik_matrix, 2),
         positive_posterior=results.positive_posteriors,
@@ -221,9 +221,9 @@ function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T};
                 
     results = FUBAR_bayesian_postprocessing(θ, grid)
     
-    df_results = tabulate_fubar_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, write = write)
+    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, write = write)
 
-    plot_fubar_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, write = write)
+    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, write = write)
 
     return df_results, (θ = θ, )
 
@@ -364,7 +364,7 @@ end
 
 
 
-function tabulate_fubar_results(method::FIFEFUBAR{T},results::FrequentistFUBARResults; analysis_name = "fife_analysis", write = false) where {T}
+function FUBAR_tabulate_results(method::FIFEFUBAR{T},results::FrequentistFUBARResults; analysis_name = "fife_analysis", write = false) where {T}
     n_sites = length(results.site_p_value)
     
     df_results = DataFrame(

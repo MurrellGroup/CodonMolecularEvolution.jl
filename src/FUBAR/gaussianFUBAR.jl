@@ -357,13 +357,13 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
         m = m)
 
     results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples)
-    analysis = tabulate_fubar_results(method, results,grid,analysis_name = analysis_name, write = write)
-    plot_fubar_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, write = write)   
+    analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, write = write)
+    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, write = write)   
     return analysis, (θ = θ, )
 end
 
-function tabulate_fubar_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "skbdi_fubar_analysis", write = true)
-    return tabulate_fubar_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, write = write)
+function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "skbdi_fubar_analysis", write = true)
+    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, write = write)
 end
 
 ## HERE ENDS INTEGRATION WITH THE FUBAR INTERACE
