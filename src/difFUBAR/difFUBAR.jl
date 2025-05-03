@@ -144,7 +144,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=false, ladderize_tree = false)
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false)
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -455,6 +455,7 @@ Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores 
 - `tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)]`: vector of tag colors (hex format). The default option is consistent with the difFUBAR paper (Foreground 1: red, Foreground 2: blue).
 - `pos_thresh=0.95`: threshold of significance for the posteriors.
 - `iters=2500`: iterations used in the Gibbs sampler.
+- `binarize=false`: if true, the tree is binarized before the analysis.
 - `verbosity=1`: as verbosity increases, prints are added accumulatively. 
     - 0 - no prints
     - 1 - show current step and where output files are exported
@@ -468,9 +469,9 @@ Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores 
 !!! note
     Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
 """
-function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
+function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, binarize=false, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity)
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
