@@ -6,8 +6,10 @@ using PDMats, BenchmarkTools
 using EllipticalSliceSampling
 using KrylovKit
 abstract type difFUBARGrid end
+struct PlotsExtDummy end
 
 include("shared/shared.jl")
+include("shared/emptyplot.jl")
 include("difFUBAR/difFUBAR.jl")
 include("difFUBAR/grids.jl")
 include("../test/benchmark_difFUBAR.jl")

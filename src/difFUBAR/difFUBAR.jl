@@ -35,8 +35,6 @@ function collapse_counts(param_vec, count_vec; cases=nothing)
     return storage ./ sum(storage)
 end
 
-function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites) end
-
 """
 
 
@@ -77,13 +75,12 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
     if exports
-        plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name)
+        plot_tagged_phylo_tree(PlotsExtDummy(), tree, tag_colors, tags, analysis_name)
     end
 
     #Tags and tag colors are now ordered, and tag_colors includes the untagged category
     return tree, tags, tag_colors, analysis_name
 end
-function plot_tagged_phylo_tree(tree, tag_colors, tags, analysis_name) return nothing end
 
 function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; verbosity=1, optimize_branch_lengths=false)
 
@@ -154,7 +151,7 @@ function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
     return alloc_grid, theta
 end
 
-function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
+function difFUBAR_bayesian_postprocessing(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1)
     grid_size, num_sites = size(alloc_grid)
 
     r(s) = round(s, digits=4)
@@ -205,6 +202,13 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
             push!(detected_sites, site)
         end
     end
+    
+    # Return everything needed by both tabulate and plot functions
+    return detections, param_means, detected_sites, group1_volumes, group2_volumes, alpha_volumes, num_sites
+end
+
+
+function difFUBAR_tabulate(analysis_name, detections, param_means, num_sites; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true)
 
     #Exporting site data
     df = DataFrame()
@@ -219,12 +223,28 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
 
     verbosity > 0 && println("\nIf exports = true, writing results for all sites to CSV: " * analysis_name * "_posteriors.csv")
     exports && CSV.write(analysis_name * "_posteriors.csv", df)
-
-    sites = [1:num_sites;]
     
     return df
 end
-export difFUBAR_tabulate
+
+export difFUBAR_tabulate_and_plot
+function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true)
+    # Process the data and get all needed values
+    detections, param_means, detected_sites, group1_volumes, group2_volumes, alpha_volumes, num_sites = 
+        difFUBAR_bayesian_postprocessing(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; 
+                                        tag_colors=tag_colors, verbosity=verbosity)
+
+    # Pass appropriate values to each function
+    df = difFUBAR_tabulate(analysis_name, detections, param_means, num_sites; 
+                          tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+    
+    # Make sure to pass all required values to plot_results
+    difFUBAR_plot_results(PlotsExtDummy(), analysis_name, pos_thresh, detections, param_means, num_sites, omegagrid,
+                         detected_sites, group1_volumes, group2_volumes, alpha_volumes;
+                         tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+    
+    return df
+end
 
 #Must return enough to re-calculate detections etc
 export difFUBAR
@@ -262,7 +282,7 @@ function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
-    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+    df = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=tag_colors, verbosity=verbosity, exports=exports)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
