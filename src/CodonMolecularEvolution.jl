@@ -40,5 +40,5 @@ export
     alphabetagrid,
     DirichletFUBAR,
     FIFEFUBAR,
-    FUBARgrid
+    FUBARGrid
 end

@@ -27,15 +27,15 @@ function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, 
     savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
 end
 
-function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="skbdi_analysis", write=false, diagnostics=true)
+function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="skbdi_analysis", write=false, diagnostics=true)
     plot_skbdi_mixing(results, grid, analysis_name)
     CodonMolecularEvolution.FUBAR_plot_results(Dummy(), CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, write=write)
 end
-function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="dirichlet_analysis", write=false, diagnostics=false)
+function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="dirichlet_analysis", write=false, diagnostics=false)
     CodonMolecularEvolution.FUBAR_plot_results(Dummy(), CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, write=write)
 end
 
-function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DefaultBayesianFUBARMethod, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARgrid; analysis_name="bayesian_analysis", write=false)
+function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DefaultBayesianFUBARMethod, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="bayesian_analysis", write=false)
     posterior_mean_plot = gridplot(grid, results)
     positive_violin_plot, purifying_violin_plot = violin_plots(grid, results)
     if write
@@ -142,7 +142,7 @@ end
 
 # Moving on to PlotsExt functions
 
-function gridplot(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMolecularEvolution.BayesianFUBARResults; title="")
+function gridplot(grid::CodonMolecularEvolution.FUBARGrid, results::CodonMolecularEvolution.BayesianFUBARResults; title="")
     θ = results.posterior_mean
     p = scatter(grid.alpha_ind_vec, grid.beta_ind_vec, zcolor=θ, c=:darktest, colorbar=false,
         markersize=sqrt(length(grid.alpha_ind_vec)) / 3.5, markershape=:square, markerstrokewidth=0.0, size=(350, 350),
@@ -257,7 +257,7 @@ function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_s
 
 end
 
-function violin_plots(grid::CodonMolecularEvolution.FUBARgrid, results::CodonMolecularEvolution.BayesianFUBARResults;
+function violin_plots(grid::CodonMolecularEvolution.FUBARGrid, results::CodonMolecularEvolution.BayesianFUBARResults;
     posterior_threshold=0.95,
     volume_scaling=1.0,
     plot_positive=true,
@@ -324,7 +324,7 @@ end
 
 
 function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults,
-    grid::CodonMolecularEvolution.FUBARgrid,
+    grid::CodonMolecularEvolution.FUBARGrid,
     analysis_name::String)
 
 

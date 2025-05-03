@@ -105,7 +105,7 @@ struct SupressionType{T}
 end
 
 struct GaussianFUBARModel{T} <: AmbientProblemModel
-    grid::FUBARgrid{T}
+    grid::FUBARGrid{T}
     distance_function::Function
     kernel_function::Function
     gaussian_dimension::Int64
@@ -170,7 +170,7 @@ end
 
 
 
-function standard_fubar_distance_function(grid::FUBARgrid, i, j)
+function standard_fubar_distance_function(grid::FUBARGrid, i, j)
     # This accounts for the scaling parameter
     if (i > length(grid.alpha_ind_vec) || j > length(grid.alpha_ind_vec))
         return i == j ? 0 : Inf
@@ -194,7 +194,7 @@ function quintic_smooth_transition(x, alpha, beta)
     end
 end
 
-function define_gaussian_model(grid::FUBARgrid;
+function define_gaussian_model(grid::FUBARGrid;
     distance_function=standard_fubar_distance_function,
     kernel_function=(d, c) -> exp(-d / (c^2)),
     kernel_parameter_dimension=1,
@@ -260,7 +260,7 @@ function SKBDIFUBAR(::Type{T} = Float64) where {T}
     return SKBDIFUBAR{T}()
 end
 """
-    FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
+    FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARGrid{T};
                 analysis_name = "skbdi_fubar_analysis",
                 volume_scaling = 1.0,
                 write = true,
@@ -280,7 +280,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the S
 
 # Arguments
 - `method::SKBDIFUBAR{T}`: Empty struct used for dispatch
-- `grid::FUBARgrid{T}`: Grid to perform inference on
+- `grid::FUBARGrid{T}`: Grid to perform inference on
 
 # Keywords
 - `analysis_name::String="skbdi_fubar_analysis"`: Name for the analysis output files and directory
@@ -311,7 +311,7 @@ and processes the samples to generate posterior probabilities of selection.
 
 If no supression type is provided, a default one is constructed based on the grid dimensions
 with a fifth degree polynomial is used"""
-function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T}; 
+function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARGrid{T}; 
     analysis_name = "skbdi_fubar_analysis", 
     volume_scaling = 1.0,
     write = true,
@@ -362,7 +362,7 @@ function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARgrid{T};
     return analysis, (θ = θ, )
 end
 
-function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "skbdi_fubar_analysis", write = true)
+function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", write = true)
     return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, write = write)
 end
 

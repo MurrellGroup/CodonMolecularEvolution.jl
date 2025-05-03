@@ -2,7 +2,7 @@
 # A FUBAR method at its most basic level should be able to take in a tagged tree
 # and output an empirical prior distribution corresponding to a discretisation of the
 # bivariate distribution over synonymous/non-synonymous substitution
-struct FUBARgrid{T}
+struct FUBARGrid{T}
     grid_values::Vector{T}
     alpha_vec::Vector{T}
     beta_vec::Vector{T}
@@ -68,7 +68,7 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1, grid_function=x
     sum_shift = sum(prob_matrix, dims=1)
     prob_matrix ./= sum_shift
     LLO = sum(maxi_shift .+ log.(sum_shift))
-    return FUBARgrid(grid_values, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, prob_matrix, LLO, size(prob_matrix, 2), grid_function, LL_matrix)
+    return FUBARGrid(grid_values, alpha_vec, beta_vec, alpha_ind_vec, beta_ind_vec, prob_matrix, LLO, size(prob_matrix, 2), grid_function, LL_matrix)
 end
 
 #Packaging "everything before the conditional likelihoods"
@@ -99,13 +99,13 @@ end
 
 # For some Bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
 
-function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARgrid{T}, kernel_parameters::Vector{Vector{T}}) where {T}
+function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARGrid{T}, kernel_parameters::Vector{Vector{T}}) where {T}
     θ = mean(θs)
     results = FUBAR_bayesian_postprocessing(θ, grid)
     return BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs, kernel_parameters)
 end
 
-function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARgrid{T}) where {T}
+function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARGrid{T}) where {T}
     positive_filter = grid.beta_ind_vec .> grid.alpha_ind_vec
     purifying_filter = grid.beta_ind_vec .< grid.alpha_ind_vec
     weighted_matrix = grid.cond_lik_matrix .* θ
@@ -128,7 +128,7 @@ function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARgrid{T}) where 
 end
 
 
-function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARgrid; analysis_name = "bayesian_analysis", write = false)
+function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "bayesian_analysis", write = false)
     
     df_results = DataFrame(site=1:size(grid.cond_lik_matrix, 2),
         positive_posterior=results.positive_posteriors,
@@ -165,7 +165,7 @@ end
 
 
 """
-    FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T};
+    FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARGrid{T};
                   analysis_name = "dirichlet_fubar_analysis",
                   write = true,
                   posterior_threshold = 0.95,
@@ -180,7 +180,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dir
 
 # Arguments
 - `method::DirichletFUBAR{T}`: Empty struct to dispatch the original FUBAR method 
-- `grid::FUBARgrid{T}`: the FUBARgrid to perform inference on
+- `grid::FUBARGrid{T}`: the FUBARGrid to perform inference on
 
 # Keywords
 - `analysis_name::String="dirichlet_fubar_analysis"`: File names
@@ -199,9 +199,9 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dir
   - `θ`: Parameter estimates from the EM algorithm
 
 # Description
-Takes in a FUBARgrid object and outputs results for sites obtained from the FUBAR method 
+Takes in a FUBARGrid object and outputs results for sites obtained from the FUBAR method 
 """
-function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARgrid{T}; 
+function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARGrid{T}; 
     analysis_name = "dirichlet_fubar_analysis",
     write = true,
     posterior_threshold = 0.95, 
@@ -287,7 +287,7 @@ function FIFEFUBAR(::Type{T} = Float64) where {T}
     return FIFEFUBAR{T}()
 end
 """
-    FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARgrid{T};
+    FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARGrid{T};
                 analysis_name = "fife_analysis",
                 verbosity = 1,
                 write = true,
@@ -297,7 +297,7 @@ Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolutio
 
 # Arguments
 - `method::FIFEFUBAR{T}`: Empty struct to dispatch on
-- `grid::FUBARgrid{T}`: Grid containing data to perform inference on
+- `grid::FUBARGrid{T}`: Grid containing data to perform inference on
 
 # Keywords
 - `analysis_name::String="fife_analysis"`: Name for the analysis output files and directory
@@ -315,7 +315,7 @@ This function performs likelihood ratio tests at each site using interpolated li
 When `positive_tail_only=true`, the p-values are adjusted to reflect a one-tailed test that only 
 considers positive selection (β > α) by using a dirac delta/Chi-square mixture
 """
-function FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARgrid{T}; 
+function FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARGrid{T}; 
     analysis_name = "fife_analysis", 
     verbosity = 1, 
     write = true,
