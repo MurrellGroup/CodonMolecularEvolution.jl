@@ -290,7 +290,7 @@ Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolutio
 - `positive_tail_only::Bool=false`: If true, uses a one-tailed test for positive selection only
 
 # Returns
-- `results::FrequentistFUBARResults{T}`: A struct containing the frequentist analysis results
+- `df_results::DataFrame`: A DataFrame containing the frequentist analysis results
 
 # Description
 Frequentist method that gives p-values for site-wise alpha/beta tests
@@ -339,11 +339,9 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         hzero_loglikelihood,
         fitted_rate_hzero
     )
-    if exports
-        # save_fubar_results(results, analysis_name = analysis_name)
-    end
+    df_results = FUBAR_tabulate_results(method,results, analysis_name = analysis_name, exports = exports)
     
-    return results
+    return df_results
 end
 
 
