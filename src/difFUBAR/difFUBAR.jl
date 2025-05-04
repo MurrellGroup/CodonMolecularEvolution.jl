@@ -39,7 +39,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=false, ladderize_tree = false)
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false)
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -228,7 +228,24 @@ function difFUBAR_tabulate(analysis_name, detections, param_means, num_sites; ta
 end
 
 export difFUBAR_tabulate_and_plot
-function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true)
+"""
+    difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true)
+
+Takes the output of `difFUBAR`, tabulates and plots the results. Returns a DataFrame of tabulated results.
+This function enables you to use the results of `difFUBAR` to tabulate the results with a different threshold.
+
+# Arguments
+- `analysis_name`: where to export the results.
+- `pos_thresh`: threshold of significance for the posteriors.
+- `alloc_grid`: contains the result of the Gibbs sampler.
+- `codon_param_vec`: vector of codon parameters from difFUBAR.
+- `alphagrid`: grid of alpha values.
+- `omegagrid`: grid of omega values.
+- `tag_colors`: colors of the tags.
+- `verbosity=1`: will print to stdout if 1, will not print to stdout if 0.
+- `exports=true`: if true, output files are exported.
+"""
+function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=1, exports=true)
     # Process the data and get all needed values
     detections, param_means, detected_sites, group1_volumes, group2_volumes, alpha_volumes, num_sites = 
         difFUBAR_bayesian_postprocessing(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; 
@@ -252,6 +269,8 @@ export difFUBAR
     difFUBAR(seqnames, seqs, treestring, tags, outpath; <keyword arguments>)
 
 Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysis.
+Returns `df, results_tuple` where `df` is a DataFrame of the detected sites and `results_tuple` is a tuple of the partial calculations needed to re-run `difFUBAR_tabulate`.
+Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores `(alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)`.
 
 # Arguments
 - `seqnames`: vector of untagged sequence names.
@@ -262,6 +281,7 @@ Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysi
 - `tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)]`: vector of tag colors (hex format). The default option is consistent with the difFUBAR paper (Foreground 1: red, Foreground 2: blue).
 - `pos_thresh=0.95`: threshold of significance for the posteriors.
 - `iters=2500`: iterations used in the Gibbs sampler.
+- `binarize=false`: if true, the tree is binarized before the analysis.
 - `verbosity=1`: as verbosity increases, prints are added accumulatively. 
     - 0 - no prints
     - 1 - show current step and where output files are exported
@@ -275,9 +295,9 @@ Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysi
 !!! note
     Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
 """
-function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
+function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, binarize=false, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity)
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)

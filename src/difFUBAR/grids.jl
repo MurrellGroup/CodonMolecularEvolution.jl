@@ -415,6 +415,8 @@ function difFUBAR_grid(version::difFUBARTreesurgery, tree, tags, GTRmat, F3x4_fr
         x.children = FelNode[]
     end
 
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
+
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]
         omegas = cp[2:end]
