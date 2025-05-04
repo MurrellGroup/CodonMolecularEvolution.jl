@@ -302,7 +302,7 @@ function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
-    df = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+    df = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
