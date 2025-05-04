@@ -320,6 +320,7 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
     burnin = 200,
     thinning = 50) where {T}
 
+    @assert n_samples > burnin
     if isnothing(supression_type)
         grid_dimension = length(grid.grid_values)
         last_lower_triangular_index = grid_dimension * (grid_dimension - 1) / 2
