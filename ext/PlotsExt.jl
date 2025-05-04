@@ -27,17 +27,17 @@ function CodonMolecularEvolution.plot_tagged_phylo_tree(tree, tag_colors, tags, 
     savefig_tweakSVG(analysis_name * "_tagged_input_tree.svg", pl)
 end
 
-function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="skbdi_analysis", exports=false, diagnostics=true)
+function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.SKBDIFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="skbdi_analysis", posterior_threshold = 0.95, volume_scaling = 1.0, exports=false, diagnostics=true)
     exports && plot_skbdi_mixing(results, grid, analysis_name)
-    CodonMolecularEvolution.FUBAR_plot_results(Dummy(), CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, exports=exports)
+    CodonMolecularEvolution.FUBAR_plot_results(Dummy(), CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports=exports)
 end
-function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="dirichlet_analysis", exports=false, diagnostics=false)
-    CodonMolecularEvolution.FUBAR_plot_results(Dummy(), CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, exports=exports)
+function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DirichletFUBAR, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="dirichlet_analysis", posterior_threshold = 0.95, volume_scaling = 1.0, exports=false, diagnostics=false)
+    CodonMolecularEvolution.FUBAR_plot_results(Dummy(), CodonMolecularEvolution.DefaultBayesianFUBARMethod(), results, grid, analysis_name=analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports=exports)
 end
 
-function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DefaultBayesianFUBARMethod, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="bayesian_analysis", exports=false)
+function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecularEvolution.DefaultBayesianFUBARMethod, results::CodonMolecularEvolution.BayesianFUBARResults, grid::CodonMolecularEvolution.FUBARGrid; analysis_name="bayesian_analysis", posterior_threshold = 0.95, volume_scaling = 1.0, exports=false)
     posterior_mean_plot = gridplot(grid, results)
-    positive_violin_plot, purifying_violin_plot = violin_plots(grid, results)
+    positive_violin_plot, purifying_violin_plot = violin_plots(grid, results, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling)
     if exports
         savefig(posterior_mean_plot, analysis_name * "_posterior_mean.pdf")
         if !isnothing(positive_violin_plot)

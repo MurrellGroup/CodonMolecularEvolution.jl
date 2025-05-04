@@ -155,6 +155,16 @@ end
 
 struct DirichletFUBAR <: BayesianFUBARMethod end
 
+function FUBAR_tabulate_from_θ(method::DirichletFUBAR, θ, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
+    results = FUBAR_bayesian_postprocessing(θ, grid)
+    
+    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, exports = exports)
+
+    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
+
+    return df_results
+end
+
 """
     FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
                   analysis_name = "dirichlet_fubar_analysis",
@@ -182,12 +192,12 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dir
 - `optimize_branch_lengths::Bool=false`: ?
 - `concentration::Float64=0.5`: Concentration parameter for the Dirichlet process
 - `iterations::Int=2500`: Number of EM algorithm iterations
-- `volume_scaling::Float64=1.0`: ?
+- `volume_scaling::Float64=1.0`: Controls the scaling of the marginal parameter violin plots
 
 # Returns
 - A tuple containing:
-  - `df_results`: DataFrame with FUBAR analysis results
-  - `θ`: Parameter estimates from the EM algorithm
+    - `df_results`: DataFrame with FUBAR analysis results
+    - `params`: A named tuple with the fields - `θ`: Parameter estimates from the EM algorithm
 
 # Description
 Takes in a FUBARGrid object and outputs results for sites obtained from the FUBAR method 
@@ -210,11 +220,7 @@ function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
     θ = FUBAR_fitEM(grid.cond_lik_matrix, iterations, concentration, 
                 verbosity = verbosity)
                 
-    results = FUBAR_bayesian_postprocessing(θ, grid)
-    
-    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, exports = exports)
-
-    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, exports = exports)
+    df_results = FUBAR_tabulate_from_θ(method, θ, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
 
     return df_results, (θ = θ, )
 

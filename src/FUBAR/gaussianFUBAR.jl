@@ -277,7 +277,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the S
 
 # Keywords
 - `analysis_name::String="skbdi_fubar_analysis"`: Name for the analysis output files and directory
-- `volume_scaling::Float64=1.0`: ?
+- `volume_scaling::Float64=1.0`: Controls the scaling of the marginal parameter violin plots
 - `exports::Bool=true`: Whether to export results to files
 - `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
 - `posterior_threshold::Float64=0.95`: Posterior probability threshold for classification
@@ -294,7 +294,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the S
 # Returns
 - A tuple containing:
     - `analysis`: DataFrame with FUBAR analysis results
-    - `θ`: Thinned transformed grid samples from the chain
+    - `params`: A named tuple with the fields - `θ`: Thinned transformed grid samples from the chain, `kernel_samples`: Samples from the kernel
 
 # Description
 
@@ -350,10 +350,15 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         thinning = thinning, 
         m = m)
 
+    analysis = FUBAR_tabulate_from_θ(method, θ, kernel_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
+    return analysis, (θ = θ, kernel_samples = kernel_samples)
+end
+
+function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
     results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples)
     analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, exports = exports)
-    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, exports = exports)   
-    return analysis, (θ = θ, )
+    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
+    return analysis
 end
 
 function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", exports = true)
