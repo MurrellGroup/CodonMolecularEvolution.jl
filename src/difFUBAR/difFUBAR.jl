@@ -39,7 +39,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false)
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false, plot_collection = [])
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -69,15 +69,13 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     #Export tagged input tree to file?
     verbosity > 0 && println("Step 1: Initialization. If exports = true, tree showing the assignment of branches to groups/colors will be exported to: " * analysis_name * "_tagged_input_tree.svg.")
 
-
     p = sortperm(tags)
     tags, tag_colors = tags[p], tag_colors[p]
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
-    if exports
-        plot_tagged_phylo_tree(PlotsExtDummy(), tree, tag_colors, tags, analysis_name)
-    end
-
+    pl = plot_tagged_phylo_tree(PlotsExtDummy(), tree, tag_colors, tags, analysis_name, exports = exports)
+    push!(plot_collection, pl)
+    
     #Tags and tag colors are now ordered, and tag_colors includes the untagged category
     return tree, tags, tag_colors, analysis_name
 end
@@ -115,7 +113,7 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
     end
 
     GTRmat = reversibleQ(nuc_mu, ones(4))
-    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code)
+    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code, verbosity=verbosity)
     
     rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1
 
@@ -229,9 +227,10 @@ end
 
 export difFUBAR_tabulate_and_plot
 """
-    difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true)
+    difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=1, exports=true)
 
-Takes the output of `difFUBAR`, tabulates and plots the results. Returns a DataFrame of tabulated results.
+Takes the output of `difFUBAR`, tabulates and plots the results. Returns a DataFrame of tabulated results,
+a tuple of partial calculations needed to re-run tabulate, and a vector of plots.
 This function enables you to use the results of `difFUBAR` to tabulate the results with a different threshold.
 
 # Arguments
@@ -244,6 +243,16 @@ This function enables you to use the results of `difFUBAR` to tabulate the resul
 - `tag_colors`: colors of the tags.
 - `verbosity=1`: will print to stdout if 1, will not print to stdout if 0.
 - `exports=true`: if true, output files are exported.
+
+If:
+```julia
+df, results, plots = difFUBAR(seqnames, seqs, treestring, tags, "my_analysis")
+```
+
+Then you can retabulate and replot by propagating the `results` tuple:
+```julia
+difFUBAR_tabulate_and_plot("my_analysis_0.85", 0.85, results...)
+```
 """
 function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=1, exports=true)
     # Process the data and get all needed values
@@ -256,11 +265,12 @@ function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon
                           tag_colors=tag_colors, verbosity=verbosity, exports=exports)
     
     # Make sure to pass all required values to plot_results
+    plot_collection = []
     difFUBAR_plot_results(PlotsExtDummy(), analysis_name, pos_thresh, detections, param_means, num_sites, omegagrid,
                          detected_sites, group1_volumes, group2_volumes, alpha_volumes;
-                         tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+                         tag_colors=tag_colors, verbosity=verbosity, exports=exports, plot_collection = plot_collection)
     
-    return df
+    return df, plot_collection
 end
 
 #Must return enough to re-calculate detections etc
@@ -297,15 +307,16 @@ Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores 
 """
 function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, binarize=false, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize)
+    plot_collection = []
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize, plot_collection = plot_collection)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
-    df = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
+    df, second_plot_collection = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
 
     #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors), vcat(plot_collection, second_plot_collection)
 end
 
 
