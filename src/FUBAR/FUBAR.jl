@@ -119,8 +119,8 @@ function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARGrid{T}) where 
     n_grid = Int(sqrt(length(grid.beta_vec)))  # should be 20
     weighted_sites = reshape(weighted_matrix, n_grid, n_grid, :)
     # Keep as matrices (n_grid × num_sites)
-    posterior_alpha = reshape(sum(weighted_sites, dims=2), n_grid, :)  # Sum over beta dimension
-    posterior_beta = reshape(sum(weighted_sites, dims=1), n_grid, :)   # Sum over alpha dimension
+    posterior_alpha = reshape(sum(weighted_sites, dims=1), n_grid, :)  # Sum over beta dimension
+    posterior_beta = reshape(sum(weighted_sites, dims=2), n_grid, :)   # Sum over alpha dimension
     
     return BayesianFUBARResults(positive_posteriors, purifying_posteriors,
         beta_posterior_mean, alpha_posterior_mean,

@@ -264,7 +264,7 @@ function violin_plots(grid::CodonMolecularEvolution.FUBARGrid, results::CodonMol
     plot_purifying=true)
 
     # Extract grid values for the x-axis
-    grid_values = grid.alpha_vec[1:Int(sqrt(length(grid.alpha_vec)))]
+    grid_values = grid.grid_values
     grd = round.(grid_values, digits=3)
 
     # Find sites with significant positive selection
