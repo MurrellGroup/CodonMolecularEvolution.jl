@@ -153,19 +153,10 @@ function FUBAR_fitEM(con_lik_matrix, iters, conc; verbosity=1)
     return LDAθ
 end
 
-struct DirichletFUBAR{T} <: BayesianFUBARMethod
-    function DirichletFUBAR{T}() where {T}
-        return new{T}()
-    end
-end
-
-function DirichletFUBAR(::Type{T} = Float64) where {T}
-    return DirichletFUBAR{T}()
-end
-
+struct DirichletFUBAR <: BayesianFUBARMethod end
 
 """
-    FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARGrid{T};
+    FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
                   analysis_name = "dirichlet_fubar_analysis",
                   write = true,
                   posterior_threshold = 0.95,
@@ -179,7 +170,7 @@ end
 Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dirichlet process.
 
 # Arguments
-- `method::DirichletFUBAR{T}`: Empty struct to dispatch the original FUBAR method 
+- `method::DirichletFUBAR`: Empty struct to dispatch the original FUBAR method 
 - `grid::FUBARGrid{T}`: the FUBARGrid to perform inference on
 
 # Keywords
@@ -201,7 +192,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dir
 # Description
 Takes in a FUBARGrid object and outputs results for sites obtained from the FUBAR method 
 """
-function FUBAR_analysis(method::DirichletFUBAR{T}, grid::FUBARGrid{T}; 
+function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T}; 
     analysis_name = "dirichlet_fubar_analysis",
     write = true,
     posterior_threshold = 0.95, 
@@ -277,17 +268,10 @@ struct FrequentistFUBARResults{T} <: FUBARResults
     hzero_loglikelihood::Vector{T}
     fitted_rate_hzero::Vector{T} # ML estimate of transition rate under null hyp
 end
-struct FIFEFUBAR{T} <: FUBARMethod
-    function FIFEFUBAR{T}() where {T}
-        return new{T}()
-    end
-end
+struct FIFEFUBAR <: FUBARMethod end
 
-function FIFEFUBAR(::Type{T} = Float64) where {T}
-    return FIFEFUBAR{T}()
-end
 """
-    FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARGrid{T};
+    FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
                 analysis_name = "fife_analysis",
                 verbosity = 1,
                 write = true,
@@ -296,7 +280,7 @@ end
 Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolution) approach.
 
 # Arguments
-- `method::FIFEFUBAR{T}`: Empty struct to dispatch on
+- `method::FIFEFUBAR`: Empty struct to dispatch on
 - `grid::FUBARGrid{T}`: Grid containing data to perform inference on
 
 # Keywords
@@ -315,7 +299,7 @@ This function performs likelihood ratio tests at each site using interpolated li
 When `positive_tail_only=true`, the p-values are adjusted to reflect a one-tailed test that only 
 considers positive selection (β > α) by using a dirac delta/Chi-square mixture
 """
-function FUBAR_analysis(method::FIFEFUBAR{T}, grid::FUBARGrid{T}; 
+function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T}; 
     analysis_name = "fife_analysis", 
     verbosity = 1, 
     write = true,
@@ -364,7 +348,7 @@ end
 
 
 
-function FUBAR_tabulate_results(method::FIFEFUBAR{T},results::FrequentistFUBARResults; analysis_name = "fife_analysis", write = false) where {T}
+function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", write = false)
     n_sites = length(results.site_p_value)
     
     df_results = DataFrame(

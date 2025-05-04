@@ -1,4 +1,4 @@
-struct AmbientESSProblem{T}
+struct AmbientESSProblem
     loglikelihood::Function
     distance_function::Function
     kernel_function::Function # has signature (d, kernelparams)
@@ -162,7 +162,7 @@ function define_ambient_problem(model::GaussianFUBARModel)
     ambient_distance_function = (i, j) -> permuted_distance_matrix[i, j]
 
     loglikelihood = θ -> gaussian_fubar_loglikelihood(model, θ)
-    return AmbientESSProblem{Float64}(loglikelihood, ambient_distance_function,
+    return AmbientESSProblem(loglikelihood, ambient_distance_function,
         model.kernel_function,
         model.gaussian_dimension,
         model.kernel_parameter_dimension)
@@ -250,17 +250,10 @@ function gaussian_sample_postprocessing(model::GaussianFUBARModel, θs; thinning
 end
 
 ## HERE BEGINS INTEGRATION WIH THE FUBAR INTERACE
-struct SKBDIFUBAR{T} <: BayesianFUBARMethod 
-    function SKBDIFUBAR{T}() where {T}
-        return new{T}()
-    end
-end
+struct SKBDIFUBAR <: BayesianFUBARMethod end
 
-function SKBDIFUBAR(::Type{T} = Float64) where {T}
-    return SKBDIFUBAR{T}()
-end
 """
-    FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARGrid{T};
+    FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
                 analysis_name = "skbdi_fubar_analysis",
                 volume_scaling = 1.0,
                 write = true,
@@ -279,7 +272,7 @@ end
 Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the SKBDI (Smooth Kernel Bayesian Density Inference) approach.
 
 # Arguments
-- `method::SKBDIFUBAR{T}`: Empty struct used for dispatch
+- `method::SKBDIFUBAR`: Empty struct used for dispatch
 - `grid::FUBARGrid{T}`: Grid to perform inference on
 
 # Keywords
@@ -311,7 +304,7 @@ and processes the samples to generate posterior probabilities of selection.
 
 If no supression type is provided, a default one is constructed based on the grid dimensions
 with a fifth degree polynomial is used"""
-function FUBAR_analysis(method::SKBDIFUBAR{T}, grid::FUBARGrid{T}; 
+function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T}; 
     analysis_name = "skbdi_fubar_analysis", 
     volume_scaling = 1.0,
     write = true,
