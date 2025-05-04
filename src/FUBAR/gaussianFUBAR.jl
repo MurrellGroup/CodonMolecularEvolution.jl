@@ -256,7 +256,7 @@ struct SKBDIFUBAR <: BayesianFUBARMethod end
     FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
                 analysis_name = "skbdi_fubar_analysis",
                 volume_scaling = 1.0,
-                write = true,
+                exports = true,
                 verbosity = 1,
                 posterior_threshold = 0.95,
                 distance_function = standard_fubar_distance_function,
@@ -278,7 +278,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the S
 # Keywords
 - `analysis_name::String="skbdi_fubar_analysis"`: Name for the analysis output files and directory
 - `volume_scaling::Float64=1.0`: ?
-- `write::Bool=true`: Whether to write results to files
+- `exports::Bool=true`: Whether to export results to files
 - `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
 - `posterior_threshold::Float64=0.95`: Posterior probability threshold for classification
 - `distance_function=standard_fubar_distance_function`: Function used to calculate distances between grid points
@@ -307,7 +307,7 @@ with a fifth degree polynomial is used"""
 function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T}; 
     analysis_name = "skbdi_fubar_analysis", 
     volume_scaling = 1.0,
-    write = true,
+    exports = true,
     verbosity = 1,
     posterior_threshold = 0.95,
     distance_function = standard_fubar_distance_function,
@@ -351,13 +351,13 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         m = m)
 
     results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples)
-    analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, write = write)
-    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, write = write)   
+    analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, exports = exports)
+    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, exports = exports)   
     return analysis, (θ = θ, )
 end
 
-function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", write = true)
-    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, write = write)
+function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", exports = true)
+    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, exports = exports)
 end
 
 ## HERE ENDS INTEGRATION WITH THE FUBAR INTERACE

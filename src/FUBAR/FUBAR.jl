@@ -22,9 +22,9 @@ abstract type FUBARMethod end
 abstract type BayesianFUBARMethod <: FUBARMethod end
 struct DefaultBayesianFUBARMethod <: BayesianFUBARMethod end
 
-FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", write=false) = nothing
+FUBAR_analysis(method::FUBARMethod; analysis_name="fubar_analysis", exports=false) = nothing
 
-function FUBAR_tabulate_results(method::FUBARMethod,results::FUBARResults; analysis_name = "", write = false) end
+function FUBAR_tabulate_results(method::FUBARMethod,results::FUBARResults; analysis_name = "", exports = false) end
 
 # Specific functions that are shared
 
@@ -128,7 +128,7 @@ function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARGrid{T}) where 
 end
 
 
-function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "bayesian_analysis", write = false)
+function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "bayesian_analysis", exports = false)
     
     df_results = DataFrame(site=1:size(grid.cond_lik_matrix, 2),
         positive_posterior=results.positive_posteriors,
@@ -136,7 +136,7 @@ function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::Bay
         beta_posterior_mean=results.beta_posterior_mean,
         alpha_pos_mean=results.alpha_posterior_mean)
 
-    if write
+    if exports
         init_path(analysis_name)
         CSV.write(analysis_name * "_results.csv", df_results)
     end
@@ -158,7 +158,7 @@ struct DirichletFUBAR <: BayesianFUBARMethod end
 """
     FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
                   analysis_name = "dirichlet_fubar_analysis",
-                  write = true,
+                  exports = true,
                   posterior_threshold = 0.95,
                   verbosity = 1,
                   code = MolecularEvolution.universal_code,
@@ -175,7 +175,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dir
 
 # Keywords
 - `analysis_name::String="dirichlet_fubar_analysis"`: File names
-- `write::Bool=true`: Whether to write results to files. Will plot if MolecularEvolutionViz is present
+- `exports::Bool=true`: Whether to export results to files. Will plot if MolecularEvolutionViz is present
 - `posterior_threshold::Float64=0.95`: Posterior probability classification threshold for 
 - `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
 - `code=MolecularEvolution.universal_code`: Molecular code to use
@@ -194,7 +194,7 @@ Takes in a FUBARGrid object and outputs results for sites obtained from the FUBA
 """
 function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T}; 
     analysis_name = "dirichlet_fubar_analysis",
-    write = true,
+    exports = true,
     posterior_threshold = 0.95, 
     verbosity = 1,
     code = MolecularEvolution.universal_code,
@@ -203,7 +203,7 @@ function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
     iterations = 2500,
     volume_scaling = 1.0) where {T}
     
-    if write
+    if exports
         init_path(analysis_name)
     end
     
@@ -212,9 +212,9 @@ function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
                 
     results = FUBAR_bayesian_postprocessing(θ, grid)
     
-    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, write = write)
+    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, exports = exports)
 
-    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, write = write)
+    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, exports = exports)
 
     return df_results, (θ = θ, )
 
@@ -274,7 +274,7 @@ struct FIFEFUBAR <: FUBARMethod end
     FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
                 analysis_name = "fife_analysis",
                 verbosity = 1,
-                write = true,
+                exports = true,
                 positive_tail_only = false) where {T}
 
 Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolution) approach.
@@ -286,7 +286,7 @@ Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolutio
 # Keywords
 - `analysis_name::String="fife_analysis"`: Name for the analysis output files and directory
 - `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
-- `write::Bool=true`: Whether to write results to files
+- `exports::Bool=true`: Whether to export results to files
 - `positive_tail_only::Bool=false`: If true, uses a one-tailed test for positive selection only
 
 # Returns
@@ -302,7 +302,7 @@ considers positive selection (β > α) by using a dirac delta/Chi-square mixture
 function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T}; 
     analysis_name = "fife_analysis", 
     verbosity = 1, 
-    write = true,
+    exports = true,
     positive_tail_only = false) where {T}
     
     LLmatrix = reshape(grid.LL_matrix, length(grid.grid_values), 
@@ -339,7 +339,7 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         hzero_loglikelihood,
         fitted_rate_hzero
     )
-    if write
+    if exports
         # save_fubar_results(results, analysis_name = analysis_name)
     end
     
@@ -348,7 +348,7 @@ end
 
 
 
-function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", write = false)
+function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", exports = false)
     n_sites = length(results.site_p_value)
     
     df_results = DataFrame(
@@ -364,7 +364,7 @@ function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResul
             for (p, a, b) in zip(results.site_p_value, results.fitted_alpha_ha, results.fitted_beta_ha)]
     )
 
-    if write
+    if exports
         init_path(analysis_name)
         CSV.write(analysis_name * "_results.csv", df_results)
     end
