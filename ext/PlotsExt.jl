@@ -52,7 +52,7 @@ function CodonMolecularEvolution.FUBAR_plot_results(::Dummy, method::CodonMolecu
     return posterior_mean_plot, violin_plots
 end
 
-function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, pos_thresh, detections, param_means, num_sites, omegagrid, detected_sites, group1_volumes, group2_volumes, alpha_volumes; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true, sites_to_plot=nothing, plot_collection=[])
+function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, pos_thresh, detections, param_means, num_sites, omegagrid, detected_sites, group1_volumes, group2_volumes, alpha_volumes; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true, sites_to_plot=nothing, plot_collection=NamedTuple[])
     
 
     sites = [1:num_sites;]
@@ -80,7 +80,7 @@ function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, p
         plot!(size=(400, ysize2), grid=false, top_margin=15mm, left_margin=10mm, bottom_margin=10mm)
 
         exports && savefig(analysis_name * "_violin_alpha.pdf")
-        push!(plot_collection, pl)
+        push!(plot_collection, (;posterior_alpha = pl))
 
         Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
 
@@ -91,7 +91,7 @@ function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, p
         plot!(size=(400, ysize2), grid=false, top_margin=15mm, left_margin=10mm, bottom_margin=10mm)
 
         exports && savefig(analysis_name * "_violin_omegas.pdf")
-        push!(plot_collection, pl)
+        push!(plot_collection, (;posterior_omegas = pl))
         
         Plots.CURRENT_PLOT.nullableplot = nothing
 
@@ -103,7 +103,7 @@ function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, p
         plot!(size=(400, ysize2), grid=false, top_margin=20mm, left_margin=10mm, bottom_margin=10mm)
 
         exports && savefig(analysis_name * "_violin_all_params.pdf")
-        push!(plot_collection, pl)
+        push!(plot_collection, (;posterior_alpha_and_omegas = pl))
         Plots.CURRENT_PLOT.nullableplot = nothing
 
         #Coerce the violin plot function to also viz the "detection" posteriors.
@@ -129,7 +129,7 @@ function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, p
         
 
         exports && savefig(analysis_name * "_detections.pdf")
-        push!(plot_collection, pl)
+        push!(plot_collection, (;detections = pl))
         Plots.CURRENT_PLOT.nullableplot = nothing
 
     end
@@ -139,7 +139,7 @@ function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, p
     FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
     xsize = 150 + 1.5 * length(sites)
     plot!(size=(xsize, 300), margins=1.2Plots.cm, grid=false, legendfontsize=6)
-    push!(plot_collection, pl)
+    push!(plot_collection, (;overview = pl))
     exports && savefig(analysis_name * "_site_omega_means.pdf")
     
 end

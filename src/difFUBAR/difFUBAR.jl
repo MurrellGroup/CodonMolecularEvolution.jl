@@ -39,7 +39,7 @@ end
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false, plot_collection = [])
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false, plot_collection = NamedTuple[])
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -74,7 +74,7 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
     pl = plot_tagged_phylo_tree(PlotsExtDummy(), tree, tag_colors, tags, analysis_name, exports = exports)
-    push!(plot_collection, pl)
+    !isnothing(pl) && push!(plot_collection, (;tagged_tree = pl))
     
     #Tags and tag colors are now ordered, and tag_colors includes the untagged category
     return tree, tags, tag_colors, analysis_name
@@ -265,12 +265,12 @@ function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon
                           tag_colors=tag_colors, verbosity=verbosity, exports=exports)
     
     # Make sure to pass all required values to plot_results
-    plot_collection = []
+    plot_collection = NamedTuple[]
     difFUBAR_plot_results(PlotsExtDummy(), analysis_name, pos_thresh, detections, param_means, num_sites, omegagrid,
                          detected_sites, group1_volumes, group2_volumes, alpha_volumes;
                          tag_colors=tag_colors, verbosity=verbosity, exports=exports, plot_collection = plot_collection)
     
-    return df, plot_collection
+    return df, (length(plot_collection) > 0 ? merge(plot_collection...) : (;))
 end
 
 #Must return enough to re-calculate detections etc
@@ -307,16 +307,17 @@ Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores 
 """
 function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, binarize=false, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    plot_collection = []
+    plot_collection = NamedTuple[]
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize, plot_collection = plot_collection)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
-    df, second_plot_collection = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
+    df, plots_named_tuple = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
 
-    #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors), vcat(plot_collection, second_plot_collection)
+    #Return df, (tuple of partial calculations needed to re-run tablulate), plots
+    push!(plot_collection, plots_named_tuple)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors), merge(plot_collection...) 
 end
 
 
