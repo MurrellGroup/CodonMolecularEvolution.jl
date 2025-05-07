@@ -36,6 +36,7 @@ PlotsExt = ["Plots", "Measures", "Phylo"]
 
 [compat]
 BenchmarkTools = "1.6.0"
+CSV = "0.10"
 DataFrames = "1"
 Distributions = "0.25"
 EllipticalSliceSampling = "2.0.0"
