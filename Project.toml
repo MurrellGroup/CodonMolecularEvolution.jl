@@ -38,6 +38,7 @@ PlotsExt = ["Plots", "Measures", "Phylo"]
 BenchmarkTools = "1.6.0"
 Distributions = "0.25"
 EllipticalSliceSampling = "2.0.0"
+FASTX = "2"
 MolecularEvolution = "0.2.3"
 PDMats = "0.11.32"
 Suppressor = "0.2.8"
