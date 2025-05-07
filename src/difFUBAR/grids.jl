@@ -232,7 +232,7 @@ function gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_gri
     length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
 
     num_groups = length(tags)
-    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !isroot(n)]) > num_groups
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !MolecularEvolution.isroot(n)]) > num_groups
     tensor_dims = 1+num_groups+is_background;
     
     codon_param_vec = [[a] for a in alphagrid]
@@ -414,6 +414,8 @@ function difFUBAR_grid(version::difFUBARTreesurgery, tree, tags, GTRmat, F3x4_fr
         x.parent = parent
         x.children = FelNode[]
     end
+
+    verbosity > 0 && println("Step 3: Calculating grid of $(length(codon_param_vec))-by-$(tree.parent_message[1].partition.sites) conditional likelihood values (the slowest step). Currently on:")
 
     for (row_ind,cp) in enumerate(codon_param_vec)
         alpha = cp[1]

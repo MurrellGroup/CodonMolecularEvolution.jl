@@ -35,116 +35,11 @@ function collapse_counts(param_vec, count_vec; cases=nothing)
     return storage ./ sum(storage)
 end
 
-function FUBAR_violin_plot(sites, group1_volumes, omegagrid;
-    color="black", tag="", alpha=0.6,
-    x_label="Parameter", y_label="Codon Sites",
-    v_offset=0.0, legend_ncol=3,
-    vertical_ind=findfirst(omegagrid .>= 1.0),
-    plot_legend=true)
-
-    ypos = [-i * 0.5 for i in 1:length(sites)]
-    if !isnothing(vertical_ind)
-        bar!([vertical_ind], [2 + maximum(ypos) - minimum(ypos)], bottom=[minimum(ypos) - 1], color="grey", alpha=0.05, label=:none)
-    end
-
-    for i in 1:length(sites)
-        center_line = ypos[i]
-        a = 1:length(omegagrid)
-        b = group1_volumes[i]
-        c = (v_offset .+ center_line .+ (-0.5 .* group1_volumes[i]))
-
-        bar!(a, b + c, fillto=c, linewidth=0, bar_edges=false, linealpha=0.0, ylims=(minimum(c) - 1, 0), color=color, alpha=alpha, label=:none)
-    end
-
-    bar!([-10], [1], bottom=[1000], color=color, alpha=alpha, label=tag, linewidth=0, bar_edges=false, linealpha=0.0)
-    bar!(yticks=(ypos, ["       " for _ in sites]), xticks=((1:length(omegagrid)), ["       " for _ in 1:length(omegagrid)]), xrotation=90)
-    annotate!(length(omegagrid)/2, -length(sites)/2-(2.0+(length(sites)/500)), Plots.text(x_label, "black", :center, 10))
-    annotate!(-4.5, -(length(sites)+1)/4, Plots.text(y_label, "black", :center, 10, rotation=90))
-
-    bar!(ylim=(minimum(ypos) - 0.5, maximum(ypos) + 0.5), xlim = (0, length(omegagrid) + 1))
-    if plot_legend
-        plot!(
-            legend=(0.5, 1+1.5/(50+length(sites))),
-            legendcolumns=legend_ncol,
-            shadow=true, fancybox=true,
-        )
-    end
-    for i in 1:length(sites)
-        annotate!(-0.5, ypos[i], Plots.text("$(sites[i])", "black", :right, 9))
-    end
-    for i in 1:length(omegagrid) 
-        annotate!(i, -length(sites)/2-0.55 -length(sites)/3000, Plots.text("$(omegagrid[i])", "black", :right, 9, rotation=90))
-    end
-end
-
-function FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
-    #A plot of the omega means for all sites.
-    omega1_means = [p[2] for p in param_means]
-    omega2_means = [p[3] for p in param_means]
-
-    t(x) = log10(x + 1)
-    invt(y) = 10^y - 1
-
-    omega1_means = t.(omega1_means)
-    omega2_means = t.(omega2_means)
-
-    for i in 1:length(omega1_means)
-        tc = "black"
-        if omega1_means[i] > omega2_means[i]
-            tc = tag_colors[1]
-        else
-            tc = tag_colors[2]
-        end
-
-        diff_mul = 1.0
-        if !(maximum(detections[i][1:2]) > pos_thresh)
-            diff_mul = 0.1
-        end
-
-        pos1_mul = 1.0
-        if !(detections[i][3] > pos_thresh)
-            pos1_mul = 0.15
-        end
-
-        pos2_mul = 1.0
-        if !(detections[i][4] > pos_thresh)
-            pos2_mul = 0.15
-        end
-        plot!([i, i], [omega1_means[i], omega2_means[i]], color=tc, alpha=0.75 * diff_mul, linewidth=2, xlim=(-4, num_sites + 5), label="", yscale=:log10)
-        scatter!([i], [omega1_means[i]], color=tag_colors[1], alpha=0.75 * pos1_mul, ms=2.5, label="", markerstrokecolor=:auto, yscale=:log10)
-        scatter!([i], [omega2_means[i]], color=tag_colors[2], alpha=0.75 * pos2_mul, ms=2.5, label="", markerstrokecolor=:auto, yscale=:log10)
-    end
-
-
-    scatter!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>1", ms=2.5)
-    scatter!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>1", ms=2.5)
-    plot!([-100, -100], [2, 2], color=tag_colors[1], alpha=0.75, label="ω1>ω2", linewidth=2)
-    plot!([-100, -100], [2, 2], color=tag_colors[2], alpha=0.75, label="ω2>ω1", linewidth=2)
-    plot!([-2, num_sites + 3], [log10(1.0 + 1), log10(1.0 + 1)], color="grey", alpha=0.5, label="ω=1", linestyle=:dot, linewidth=2)
-    xlabel!("Codon Sites")
-    ylabel!("ω")
-
-    n_points = 8
-    lb = 0.01
-    ub = 10
-    points = collect(t(lb):(t(ub)-t(lb))/(n_points-1):t(ub))
-    ticklabels = string.(round.(invt.(points), sigdigits=2))
-    yticks!(points, ticklabels)
-
-    xticks!(0:50:num_sites)
-
-    plot!(
-        legend=:outertop,
-        legendcolumns=5,
-        ylim=(0, log10(11)))
-
-end
-
 """
 
 
 """
-function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=false, ladderize_tree = false)
+function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], verbosity=1, exports=true, strip_tags_from_name=generate_tag_stripper(tags), disable_binarize=true, ladderize_tree = false, plot_collection = NamedTuple[])
 
     #Create the export directory, if required
     analysis_name = outpath_and_file_prefix
@@ -174,22 +69,13 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
     #Export tagged input tree to file?
     verbosity > 0 && println("Step 1: Initialization. If exports = true, tree showing the assignment of branches to groups/colors will be exported to: " * analysis_name * "_tagged_input_tree.svg.")
 
-
     p = sortperm(tags)
     tags, tag_colors = tags[p], tag_colors[p]
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
-    if exports
-        #Replace with Phylo.jl based plot?
-        color_dict = Dict(zip(getnodelist(tree), [tag_colors[model_ind(n.name, tags)] for n in getnodelist(tree)]))
-        label_dict = Dict(zip(getnodelist(tree), [strip_tags_from_name(n.name) for n in getnodelist(tree)]))
-        img = tree_draw(tree, canvas_height=(3 + length(getleaflist(tree)) / 5)cm,
-            draw_labels=true, dot_color_dict=color_dict,
-            line_color_dict=color_dict, line_width=0.3, min_dot_size=0.01,
-            nodelabel_dict=label_dict)
-        img |> SVG(analysis_name * "_tagged_input_tree.svg", 15cm, (3 + length(getleaflist(tree)) / 5)cm)
-    end
-
+    pl = plot_tagged_phylo_tree(PlotsExtDummy(), tree, tag_colors, tags, analysis_name, exports = exports)
+    !isnothing(pl) && push!(plot_collection, (;tagged_tree = pl))
+    
     #Tags and tag colors are now ordered, and tag_colors includes the untagged category
     return tree, tags, tag_colors, analysis_name
 end
@@ -227,7 +113,7 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
     end
 
     GTRmat = reversibleQ(nuc_mu, ones(4))
-    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code)
+    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code, verbosity=verbosity)
     
     rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1
 
@@ -263,7 +149,7 @@ function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
     return alloc_grid, theta
 end
 
-function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, sites_to_plot=nothing, exports=true)
+function difFUBAR_bayesian_postprocessing(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1)
     grid_size, num_sites = size(alloc_grid)
 
     r(s) = round(s, digits=4)
@@ -314,6 +200,13 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
             push!(detected_sites, site)
         end
     end
+    
+    # Return everything needed by both tabulate and plot functions
+    return detections, param_means, detected_sites, group1_volumes, group2_volumes, alpha_volumes, num_sites
+end
+
+
+function difFUBAR_tabulate(analysis_name, detections, param_means, num_sites; tag_colors=DIFFUBAR_TAG_COLORS, verbosity=1, exports=true)
 
     #Exporting site data
     df = DataFrame()
@@ -328,95 +221,57 @@ function difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_ve
 
     verbosity > 0 && println("\nIf exports = true, writing results for all sites to CSV: " * analysis_name * "_posteriors.csv")
     exports && CSV.write(analysis_name * "_posteriors.csv", df)
-
-    sites = [1:num_sites;]
-
-    #Select the sites that will get plotted, in case you want to customize this.
-    if isnothing(sites_to_plot)
-        sites_to_plot = detected_sites
-    end
-
-    if length(sites_to_plot) == 0
-        verbosity > 0 && println("No sites detected above threshold.")
-    elseif exports
-        verbosity > 0 && println("Plotting alpha and omega distributions. If exports = true, saved as " * analysis_name * "_violin_*.pdf")
-
-        #Assumes alpha and omega grids are the same!? Currently enforced by args passed into difFUBAR_grid
-        #Maybe this is ok
-        grd = round.(omegagrid, digits=3)
-
-        #Three plotting examples.
-        #Plot the alphas for each flagged site
-
-        lmargin = 7 + length(sites_to_plot) / 2
-        ysize = 300 + 70 * length(sites[sites_to_plot])
-        #FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.75, grd, tag="α", color="green", x_label="α")
-        Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
-        FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot], grd, tag="α", color="green", x_label="α")
-        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
-
-        savefig(analysis_name * "_violin_alpha.pdf")
-        Plots.CURRENT_PLOT.nullableplot = nothing # PyPlots close()
-
-        #Plot the G1 and G2 omegas
-        FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot], grd, tag="ω1", color=tag_colors[1])
-        FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot], grd, tag="ω2", color=tag_colors[2], x_label="ω")
-        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
-
-        savefig(analysis_name * "_violin_omegas.pdf")
-        Plots.CURRENT_PLOT.nullableplot = nothing
-
-        #Plot all three parameters, using the v_offset to separate the alphas from the omegas
-        FUBAR_violin_plot(sites[sites_to_plot], group1_volumes[sites_to_plot] .* 0.5, grd, tag="ω1", color=tag_colors[1], v_offset=-0.1)
-        FUBAR_violin_plot(sites[sites_to_plot], group2_volumes[sites_to_plot] .* 0.5, grd, tag="ω2", color=tag_colors[2], v_offset=-0.1)
-        FUBAR_violin_plot(sites[sites_to_plot], alpha_volumes[sites_to_plot] .* 0.5, grd, tag="α", color="green", v_offset=0.1)
-        plot!(size=(400, ysize), grid=false, left_margin=(lmargin)mm, bottom_margin=10mm)
-
-        savefig(analysis_name * "_violin_all_params.pdf")
-        Plots.CURRENT_PLOT.nullableplot = nothing
-
-        #Coerce the violin plot function to also viz the "detection" posteriors.
-        floored_detec = [clamp.((d .- 0.95) .* 20, 0.0, 1.0) for d in detections[sites_to_plot]]
-        println(sites_to_plot)
-        FUBAR_violin_plot(sites[sites_to_plot], [[f[1], 0.0, 0.0, 0.0] for f in floored_detec] .* 0.5,
-            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω1>ω2)", color=tag_colors[1],
-            vertical_ind=nothing, plot_legend=false)
-        FUBAR_violin_plot(sites[sites_to_plot], [[0.0, f[2], 0.0, 0.0] for f in floored_detec] .* 0.5,
-            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω2>ω1)", color=tag_colors[2],
-            vertical_ind=nothing, plot_legend=false)
-        FUBAR_violin_plot(sites[sites_to_plot], [[0.0, 0.0, f[3], 0.0] for f in floored_detec] .* 0.5,
-            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω1>1)", color=tag_colors[1],
-            vertical_ind=nothing, plot_legend=false)
-        FUBAR_violin_plot(sites[sites_to_plot], [[0.0, 0.0, 0.0, f[4]] for f in floored_detec] .* 0.5,
-            ["P(ω1>ω2)", "P(ω2>ω1)", "P(ω1>1)", "P(ω2>1)"], tag="P(ω2>1)", color=tag_colors[2],
-            vertical_ind=nothing, legend_ncol=2, x_label="", plot_legend=false)
-
-        lmargin_detect = 12 + length(sites_to_plot) / 2
-
-        plot!(size=(800, ysize), margins=1Plots.cm, legend=false, grid=false,
-            ytickfont=18, bottom_margin=30mm, left_margin=(lmargin_detect)mm,
-            xtickfont=18)
-        println(length(sites_to_plot))
-
-        savefig(analysis_name * "_detections.pdf")
-        Plots.CURRENT_PLOT.nullableplot = nothing
-
-    end
-
-    if exports
-        Plots.CURRENT_PLOT.nullableplot = nothing
-        FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
-
-
-        xsize = 300 + 70 * length(sites[sites_to_plot])
-        plot!(size=(xsize, 300), margins=1.5Plots.cm, grid=false, legendfontsize=8)
-        savefig(analysis_name * "_site_omega_means.pdf")
-
-    end
-
+    
     return df
 end
-export difFUBAR_tabulate
+
+export difFUBAR_tabulate_and_plot
+"""
+    difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=1, exports=true)
+
+Takes the output of `difFUBAR`, tabulates and plots the results. Returns a DataFrame of tabulated results,
+a tuple of partial calculations needed to re-run tabulate, and a vector of plots.
+This function enables you to use the results of `difFUBAR` to tabulate the results with a different threshold.
+
+# Arguments
+- `analysis_name`: where to export the results.
+- `pos_thresh`: threshold of significance for the posteriors.
+- `alloc_grid`: contains the result of the Gibbs sampler.
+- `codon_param_vec`: vector of codon parameters from difFUBAR.
+- `alphagrid`: grid of alpha values.
+- `omegagrid`: grid of omega values.
+- `tag_colors`: colors of the tags.
+- `verbosity=1`: will print to stdout if 1, will not print to stdout if 0.
+- `exports=true`: if true, output files are exported.
+
+If:
+```julia
+df, results, plots = difFUBAR(seqnames, seqs, treestring, tags, "my_analysis")
+```
+
+Then you can retabulate and replot by propagating the `results` tuple:
+```julia
+difFUBAR_tabulate_and_plot("my_analysis_0.85", 0.85, results...)
+```
+"""
+function difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors; verbosity=1, exports=true)
+    # Process the data and get all needed values
+    detections, param_means, detected_sites, group1_volumes, group2_volumes, alpha_volumes, num_sites = 
+        difFUBAR_bayesian_postprocessing(pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; 
+                                        tag_colors=tag_colors, verbosity=verbosity)
+
+    # Pass appropriate values to each function
+    df = difFUBAR_tabulate(analysis_name, detections, param_means, num_sites; 
+                          tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+    
+    # Make sure to pass all required values to plot_results
+    plot_collection = NamedTuple[]
+    difFUBAR_plot_results(PlotsExtDummy(), analysis_name, pos_thresh, detections, param_means, num_sites, omegagrid,
+                         detected_sites, group1_volumes, group2_volumes, alpha_volumes;
+                         tag_colors=tag_colors, verbosity=verbosity, exports=exports, plot_collection = plot_collection)
+    
+    return df, (length(plot_collection) > 0 ? merge(plot_collection...) : (;))
+end
 
 #Must return enough to re-calculate detections etc
 export difFUBAR
@@ -424,6 +279,8 @@ export difFUBAR
     difFUBAR(seqnames, seqs, treestring, tags, outpath; <keyword arguments>)
 
 Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysis.
+Returns `df, results_tuple` where `df` is a DataFrame of the detected sites and `results_tuple` is a tuple of the partial calculations needed to re-run `difFUBAR_tabulate`.
+Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores `(alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)`.
 
 # Arguments
 - `seqnames`: vector of untagged sequence names.
@@ -434,6 +291,7 @@ Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysi
 - `tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)]`: vector of tag colors (hex format). The default option is consistent with the difFUBAR paper (Foreground 1: red, Foreground 2: blue).
 - `pos_thresh=0.95`: threshold of significance for the posteriors.
 - `iters=2500`: iterations used in the Gibbs sampler.
+- `binarize=false`: if true, the tree is binarized before the analysis.
 - `verbosity=1`: as verbosity increases, prints are added accumulatively. 
     - 0 - no prints
     - 1 - show current step and where output files are exported
@@ -447,17 +305,19 @@ Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysi
 !!! note
     Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
 """
-function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
+function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, binarize=false, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
     analysis_name = outpath
-    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity)
+    plot_collection = NamedTuple[]
+    tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize, plot_collection = plot_collection)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
-    df = difFUBAR_tabulate(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid; tag_colors=tag_colors, verbosity=verbosity, exports=exports)
+    df, plots_named_tuple = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
 
-    #Return df, (tuple of partial calculations needed to re-run tablulate)
-    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)
+    #Return df, (tuple of partial calculations needed to re-run tablulate), plots
+    push!(plot_collection, plots_named_tuple)
+    return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors), merge(plot_collection...) 
 end
 
 
