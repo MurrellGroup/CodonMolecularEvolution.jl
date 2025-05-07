@@ -158,32 +158,8 @@ function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversion
     if exports
         plots = []
         titles = String[]
-        #Plot means
-        categories = ["α", "ω1", "ω2"]
-        for (i, category) in enumerate(categories)
-            mean_codon = [p[i] for p in param_means_vec[1]]
-            mean_nuc_codon = [p[i] for p in param_means_vec[2]]
-            x = 0.0:0.01:maximum(mean_codon)
-            p = plot(x, x, color=:black, label=false, aspect_ratio=:equal)
-            scatter!( mean_codon, mean_nuc_codon, color=:blue, label=false, aspect_ratio=:equal)
-            push!(titles, category * " means")
-            push!(plots, p)
-        end
-
-        #Plot posterior probabilities
-        categories = ["P(ω1 > ω2)", "P(ω2 > ω1)", "P(ω1 > 1)", "P(ω2 > 1)"]
-        p2 = plot(layout = (1, length(categories)), thickness_scaling = 0.5)
-        for (i, category) in enumerate(categories)
-            codon = [p[i] for p in detections_vec[1]]
-            nuc_codon = [p[i] for p in detections_vec[2]]
-            x = 0.0:0.01:1.0
-            p = plot(x, x, color=:black, label=false, aspect_ratio=:equal)
-            scatter!(codon, nuc_codon, color=:red, label=false, aspect_ratio=:equal)
-            push!(titles, category * " posterior")
-            push!(plots, p)
-        end
-        l = @layout([° ° ° _; ° ° ° °])
-        plt = plot(plots..., layout = l, size = (800, 400), title=reshape(titles, 1, 7), plot_title="Codon vs. Nucleotide+Codon model fit", xlabel="Codon", ylabel="Nucleotide+Codon", left_margin=50px, bottom_margin=50px, thickness_scaling = 0.5)
+        #Plot means and posteriors
+        plt = plot_means_and_posteriors(param_means_vec, detections_vec)
         savefig(benchmark_name * "_means_and_posteriors.pdf")
     end
 
