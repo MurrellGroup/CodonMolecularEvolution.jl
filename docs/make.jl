@@ -5,21 +5,24 @@ DocMeta.setdocmeta!(CodonMolecularEvolution, :DocTestSetup, :(using CodonMolecul
 
 makedocs(;
     modules=[CodonMolecularEvolution],
-    authors="Ben Murrell <murrellb@gmail.com> and contributors",
-    repo="https://github.com/murrellb/CodonMolecularEvolution.jl/blob/{commit}{path}#{line}",
+    authors="Ben Murrell <benjamin.murrell@ki.se> and contributors",
+    repo="https://github.com/MurrellGroup/CodonMolecularEvolution.jl/blob/{commit}{path}#{line}",
     sitename="CodonMolecularEvolution.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://murrellb.github.io/CodonMolecularEvolution.jl",
+        canonical="https://MurrellGroup.github.io/CodonMolecularEvolution.jl",
         edit_link="main",
-        assets=String[],
+        assets=["assets/favicon.ico"],
     ),
     pages=[
         "Home" => "index.md",
+        "difFUBAR.md",
+        "shared.md",
+        "dataprep.md"
     ],
 )
 
 deploydocs(;
-    repo="github.com/murrellb/CodonMolecularEvolution.jl",
+    repo="github.com/MurrellGroup/CodonMolecularEvolution.jl",
     devbranch="main",
 )
