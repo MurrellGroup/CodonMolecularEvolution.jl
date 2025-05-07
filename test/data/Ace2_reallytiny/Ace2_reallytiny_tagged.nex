@@ -1,0 +1,4 @@
+#NEXUS
+begin trees;
+	tree tree_1 = [&R] ((bat_Rhinolophus_sinicus:0.110381,(bat_Rousettus_aegyptiacus:0.146854,(XM_008696415_Ursus_maritimus[&!color=#0004ff]:0.08743,XM_042974087_Panthera_tigris[&!color=#0004ff]:0.064291):0.025861)[&!color=#0004ff]:0.028259):0.025884,(bat_Molossus_molossus:0.197735,(XM_024240245_Pongo_abelii[&!color=#ff0011]:0.010856,(NM_001135696_Macaca_mulatta[&!color=#ff0011]:0.004052,XM_011995533_Mandrillus_leucophaeus[&!color=#ff0011]:0.010661)[&!color=#ff0011]:0.010077):0.117565):0.003262);
+end;
