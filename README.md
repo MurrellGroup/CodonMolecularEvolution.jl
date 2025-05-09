@@ -36,19 +36,20 @@ outdir = "fubar"
 seqnames, seqs = read_fasta("Ace2_with_bat.fasta")
 treestring = readlines("Ace2_with_bat.tre")[1]
 # Perform analysis
-fgrid = alphabetagrid(seqnames, seqs, stripped_treestring);
-fubar_df, params = FUBAR(fgrid, outdir*"/fubarACE2");
+fgrid = alphabetagrid(seqnames, seqs, treestring);
+method = DirichletFUBAR() # Standard FUBAR
+fubar_df, params = FUBAR_analysis(method, fgrid, analysis_name=outdir*"/Ace2_with_bat");
 ```
-The above call will write results to `outdir*"/fubarACE2"`, but here we only display what's written to sdout
+The above call will write results to `outdir*"/Ace2_with_bat"`, but here we only display what's written to sdout
 ```
 Step 1: Initialization.
 Step 2: Optimizing global codon model parameters.
-Optimized single α,β LL=-17461.830195713937 with α=1.739171531719709 and β=0.8585848667939485.
+Optimized single α,β LL=-66072.56532041529 with α=1.940881909909932 and β=0.7757100788818039.
 Step 3: Calculating conditional likelihoods.
 Step 4: Model fitting.
-Step 5: Tabulating results and saving plots.
-8 sites with positive selection above threshold.
-247 sites with purifying selection above threshold.
+Step 5: Tabulating results.
+19 sites with positive selection above threshold.
+487 sites with purifying selection above threshold.
 ```
 Now we show some of the above-threshold sites
 ```julia
@@ -57,19 +58,19 @@ above_threshold_sites[1:10, :]
 ```
 ```
 10×5 DataFrame
- Row │ site   positive_posterior  purifying_posterior  beta_pos_mean  alpha_pos_mean 
-     │ Int64  Float64             Float64              Float64        Float64        
-─────┼───────────────────────────────────────────────────────────────────────────────
-   1 │    17         0.00941453            0.969796        0.290362         1.5051
-   2 │    25         0.000837279           0.997008        0.086363         1.84597
-   3 │    39         0.00197271            0.990365        0.296896         2.19454
-   4 │    42         0.0189382             0.961691        0.103848         0.886938
-   5 │    49         0.0196977             0.963658        0.069775         0.864107
-   6 │    50         0.0220515             0.959766        0.0735096        0.850663
-   7 │    56         0.015584              0.970729        0.078113         1.00434
-   8 │    57         0.000123717           0.999326        0.0928777        3.12182
-   9 │    58         0.0100983             0.958165        0.517955         1.95775
-  10 │    70         0.984837              0.00279799      2.92681          0.347226
+ Row │ site   positive_posterior  purifying_posterior  beta_posterior_mean  alpha_pos_mean 
+     │ Int64  Float64             Float64              Float64              Float64        
+─────┼─────────────────────────────────────────────────────────────────────────────────────
+   1 │     1         0.00564089            0.985948              0.0126755        1.42783
+   2 │     4         5.12413e-5            0.998737              0.218888         1.12801
+   3 │     6         0.0092943             0.981231              0.0227715        1.47458
+   4 │     9         0.0118501             0.964818              0.0658507        0.392239
+   5 │    11         2.29686e-8            0.999994              0.277966         2.10407
+   6 │    15         1.43323e-6            0.999887              0.20953          1.42799
+   7 │    17         0.000436892           0.995299              0.199044         0.917965
+   8 │    19         8.04229e-9            0.999999              0.152897         2.47035
+   9 │    25         0.000141827           0.996911              0.275294         1.36792
+  10 │    27         0.995895              3.74494e-5            2.94698          1.05116
 ```
 ### difFUBAR (awaiting the correct link)
 <a href="https://academic.oup.com/mbe/article/30/5/1196/998247">
@@ -79,7 +80,7 @@ above_threshold_sites[1:10, :]
 We perform difFUBAR analysis on [this FASTA file](https://raw.githubusercontent.com/MurrellGroup/CodonMolecularEvolution.jl/main/test/data/Ace2_no_background/Ace2_tiny_test.fasta), and a tagged phylogeny from [this NEXUS tree file](https://raw.githubusercontent.com/MurrellGroup/CodonMolecularEvolution.jl/main/test/data/Ace2_no_background/Ace2_no_background.nex).
 ```julia
 # Read data
-analysis_name = "output/Ace2"
+analysis_name = "difFUBAR/Ace2_tiny"
 seqnames,seqs = read_fasta("data/Ace2_tiny_test.fasta");
 treestring, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree("data/Ace2_no_background.nex")
 # Perform analysis

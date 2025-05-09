@@ -128,8 +128,15 @@ function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARGrid{T}) where 
 end
 
 
-function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "bayesian_analysis", exports = false)
-    
+function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "bayesian_analysis", posterior_threshold = 0.95, exports = false, verbosity = 1)
+    # First some printing
+    verbosity > 0 && println("Step 5: Tabulating results.")
+    n_positive_sites = length(findall(results.positive_posteriors .> posterior_threshold))
+    verbosity > 0 && println("$(n_positive_sites) sites with positive selection above threshold.")
+
+    n_purifying_sites = length(findall(results.purifying_posteriors .> posterior_threshold))
+    verbosity > 0 && println("$(n_purifying_sites) sites with purifying selection above threshold.")
+
     df_results = DataFrame(site=1:size(grid.cond_lik_matrix, 2),
         positive_posterior=results.positive_posteriors,
         purifying_posterior=results.purifying_posteriors,
@@ -158,7 +165,7 @@ struct DirichletFUBAR <: BayesianFUBARMethod end
 function FUBAR_tabulate_from_θ(method::DirichletFUBAR, θ, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
     results = FUBAR_bayesian_postprocessing(θ, grid)
     
-    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, exports = exports)
+    df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, exports = exports, verbosity = verbosity)
 
     FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
 

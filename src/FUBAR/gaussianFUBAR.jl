@@ -356,13 +356,13 @@ end
 
 function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
     results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples)
-    analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, exports = exports)
+    analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports)
     FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
     return analysis
 end
 
-function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", exports = true)
-    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, exports = exports)
+function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", posterior_threshold = 0.95, verbosity = 1, exports = true)
+    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports)
 end
 
 ## HERE ENDS INTEGRATION WITH THE FUBAR INTERACE
