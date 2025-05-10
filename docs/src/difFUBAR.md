@@ -78,7 +78,7 @@ output/Ace2\_tiny\_violin\_all\_params.pdf
     The output has a stochastic element to it due to the MCMC.
 
 ## Interface
-```@docs
+```@docs; canonical=false
 difFUBAR
 ```
 
@@ -89,7 +89,7 @@ This lets Julia decide the amount of Julia threads and lets CodonMolecularEvolut
 
 ### difFUBARGrid
 **Subtypes** that decide which method to use for the grid likelihood computations.
-```@docs
+```@docs; canonical=false
 difFUBARBaseline
 difFUBARParallel
 difFUBARTreesurgery
