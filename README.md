@@ -19,11 +19,15 @@ In a julia REPL, type
 
 ## Documentation
 https://MurrellGroup.github.io/CodonMolecularEvolution.jl
+
+## Extensions
+To trigger our plotting extension, one must `using Plots, Phylo`.
 ## Examples
 This section demonstrates how to use our dN/dS models with real biological data, showcasing both the input requirements and the type of evolutionary insights you can obtain.
 ```julia
 using MolecularEvolution, FASTX, CodonMolecularEvolution
 ```
+**Note**: To enable plotting, one would add `using Plots, Phylo`.
 ### FUBAR
 <a href="https://academic.oup.com/mbe/article/30/5/1196/998247">
     <img src="https://img.shields.io/badge/DOI-10.1093%2Fmolbev%2Fmst030-blue.svg" alt="DOI"/>
