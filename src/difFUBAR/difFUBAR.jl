@@ -279,8 +279,8 @@ export difFUBAR
     difFUBAR(seqnames, seqs, treestring, tags, outpath; <keyword arguments>)
 
 Takes a tagged phylogeny and an alignment as input and performs difFUBAR analysis.
-Returns `df, results_tuple` where `df` is a DataFrame of the detected sites and `results_tuple` is a tuple of the partial calculations needed to re-run `difFUBAR_tabulate`.
-Consistent with the docs of [`difFUBAR_tabulate`](@ref), `results_tuple` stores `(alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)`.
+Returns `df, results_tuple, plots_named_tuple` where `df` is a DataFrame of the detected sites, `results_tuple` is a tuple of the partial calculations needed to re-run `difFUBAR_tabulate_and_plot`, and `plots_named_tuple` is a named tuple of plots.
+Consistent with the docs of [`difFUBAR_tabulate_and_plot`](@ref), `results_tuple` stores `(alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors)`.
 
 # Arguments
 - `seqnames`: vector of untagged sequence names.

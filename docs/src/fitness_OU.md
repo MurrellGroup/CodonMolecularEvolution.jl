@@ -1,7 +1,5 @@
 # Simulating with time-varying fitness
 
-Uses [this tree](simtree_tagged.svg) as input.
-
 ```julia
 #Read in a tree where the Newick string has tags (eg. "{G1}" or "{G2}") on branches.
 #Can be tagged with: https://murrellgroup.github.io/WebWidgets/phylotagger.html

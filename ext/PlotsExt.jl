@@ -137,7 +137,7 @@ function CodonMolecularEvolution.difFUBAR_plot_results(::Dummy, analysis_name, p
     Plots.CURRENT_PLOT.nullableplot = nothing
     pl = plot()
     FUBAR_omega_plot(param_means, tag_colors, pos_thresh, detections, num_sites)
-    xsize = 150 + 1.5 * length(sites)
+    xsize = 250 + 1.4 * length(sites)
     plot!(size=(xsize, 300), margins=1.2Plots.cm, grid=false, legendfontsize=6)
     push!(plot_collection, (;overview = pl))
     exports && savefig(analysis_name * "_site_omega_means.pdf")
