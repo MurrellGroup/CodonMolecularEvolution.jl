@@ -141,7 +141,7 @@ function FUBAR_tabulate_results(method::DefaultBayesianFUBARMethod, results::Bay
         positive_posterior=results.positive_posteriors,
         purifying_posterior=results.purifying_posteriors,
         beta_posterior_mean=results.beta_posterior_mean,
-        alpha_pos_mean=results.alpha_posterior_mean)
+        alpha_posterior_mean=results.alpha_posterior_mean)
 
     if exports
         init_path(analysis_name)

@@ -62,7 +62,7 @@ above_threshold_sites[1:10, :]
 ```
 ```
 10×5 DataFrame
- Row │ site   positive_posterior  purifying_posterior  beta_posterior_mean  alpha_pos_mean 
+ Row │ site   positive_posterior  purifying_posterior  beta_posterior_mean  alpha_posterior_mean 
      │ Int64  Float64             Float64              Float64              Float64        
 ─────┼─────────────────────────────────────────────────────────────────────────────────────
    1 │     1         0.00564089            0.985948              0.0126755        1.42783
