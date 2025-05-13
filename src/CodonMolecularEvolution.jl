@@ -39,6 +39,7 @@ export
     shiftingNeHBviz,
     HBviz,
     FUBAR_analysis,
+    FUBAR_tabulate_from_θ,
     SKBDIFUBAR,
     alphabetagrid,
     DirichletFUBAR,
