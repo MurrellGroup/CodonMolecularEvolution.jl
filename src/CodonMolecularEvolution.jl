@@ -1,7 +1,7 @@
 module CodonMolecularEvolution
 
-using FASTX, MolecularEvolution, StatsBase, Distributions, DataFrames, CSV, NLopt, ParameterHandling, LinearAlgebra, LaTeXStrings, Random
-using NNlib, Distributions,SimpleUnPack, AbstractMCMC, Interpolations, MCMCChains
+using FASTX, MolecularEvolution, StatsBase, Distributions, DataFrames, CSV, JSON, NLopt, ParameterHandling, LinearAlgebra, LaTeXStrings, Random
+using NNlib, Distributions, SimpleUnPack, AbstractMCMC, Interpolations, MCMCChains
 using PDMats, BenchmarkTools
 using EllipticalSliceSampling
 using KrylovKit
@@ -10,6 +10,7 @@ struct PlotsExtDummy end
 
 include("shared/shared.jl")
 include("shared/emptyplot.jl")
+include("shared/dNdS2JSON.jl")
 include("difFUBAR/difFUBAR.jl")
 include("difFUBAR/grids.jl")
 include("../test/benchmark_difFUBAR.jl")
@@ -19,6 +20,7 @@ include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
+
 export 
     difFUBARBaseline,
     difFUBARParallel,
