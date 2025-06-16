@@ -201,7 +201,7 @@ end
 """
     optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
 
-Optimizes the MG94+F3x4 model on a tree, given a set of sequences and a tree. Returns the optimized tree, alpha, beta, nuc_matrix, F3x4, and eq_freqs.
+Optimizes the MG94+F3x4 model on a tree, given a set of sequences and a tree. Returns the optimized tree, LL, alpha, beta, nuc_matrix, F3x4, and eq_freqs.
 The leaf_name_transform kwarg can be used to transform the leaf names in the tree to match the seqnames.
 """
 function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, genetic_code=MolecularEvolution.universal_code)
@@ -241,12 +241,12 @@ function optimize_MG94_F3x4(seqnames, seqs, tree; leaf_name_transform=x -> x, ge
     lower_bounds!(opt, [-5.0 for i in 1:num_params])
     upper_bounds!(opt, [5.0 for i in 1:num_params])
     xtol_rel!(opt, 1e-12)
-    _, mini, _ = NLopt.optimize(opt, flat_initial_params)
+    LL, mini, _ = NLopt.optimize(opt, flat_initial_params)
 
     final_params = unflatten(mini)
 
-    #tree, alpha, beta, nuc_matrix, F3x4, eq_freqs
-    return tree, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
+    #tree, LL, alpha, beta, nuc_matrix, F3x4, eq_freqs
+    return tree, LL, 1.0, final_params.beta, reversibleQ(final_params.rates, ones(4)), f3x4, eq_freqs
 end
 
 export optimize_MG94_F3x4
@@ -369,7 +369,7 @@ function optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat; leaf_name_t
     
     verbosity > 0 && println("Optimized single α,β LL=$(max_obj) with α=$(alpha) and β=$(beta).")
     #tree, alpha, beta, F3x4, eq_freqs
-    return tree, alpha, beta, f3x4, eq_freqs
+    return tree, max_obj, alpha, beta, f3x4, eq_freqs
 end
 
 function rescale_branchlengths!(tree, scale)
@@ -383,7 +383,7 @@ end
 ##########################################
 
 #This should be in the main repo
-function LDA_gibbs_track_allocation_vec(conditionals::Array{Float64,2}, alpha::Float64; iters=10000)
+function LDA_gibbs_track_allocation_vec(conditionals::Array{Float64,2}, alpha::Float64; iters=10000, burnin::Int=div(iters, 5))
     grid_size, num_sites = size(conditionals)
     #This should instead track an integer allocation vec per MCMC iteration - will be smaller
     alloc_grid = zeros(Int64, (grid_size, num_sites))
@@ -391,7 +391,6 @@ function LDA_gibbs_track_allocation_vec(conditionals::Array{Float64,2}, alpha::F
     θ = ones(grid_size) ./ grid_size
     v = zeros(grid_size)
     θsum = zeros(grid_size)
-    burnin::Int = div(iters, 5)
     for iter = 1:iters
         φ .= alpha
         for i = 1:num_sites

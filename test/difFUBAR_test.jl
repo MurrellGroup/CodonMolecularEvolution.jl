@@ -10,7 +10,7 @@ begin #grids
     versions = [difFUBARBaseline(), difFUBARParallel(), difFUBARTreesurgery(), difFUBARTreesurgeryAndParallel()]
     tree, tags, tag_colors, analysis_name = CodonMolecularEvolution.difFUBAR_init(analysis_name, treestring, tags, exports = false, verbosity = 0)
     code = MolecularEvolution.universal_code
-    tree, alpha,beta,GTRmat,F3x4_freqs,eq_freqs = CodonMolecularEvolution.difFUBAR_global_fit_2steps(seqnames, seqs, tree, CodonMolecularEvolution.generate_tag_stripper(tags), code, verbosity = 0)
+    tree, LL, alpha,beta,GTRmat,F3x4_freqs,eq_freqs = CodonMolecularEvolution.difFUBAR_global_fit_2steps(seqnames, seqs, tree, CodonMolecularEvolution.generate_tag_stripper(tags), code, verbosity = 0)
     tree_copy = deepcopy(tree) #Treesurgery removes nodes
     log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = CodonMolecularEvolution.gridprep(tree, tags; verbosity = 0)
     con_lik_matrices = []
