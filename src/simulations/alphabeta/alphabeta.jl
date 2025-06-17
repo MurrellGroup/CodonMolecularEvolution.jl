@@ -2,7 +2,7 @@
 function alphabeta_setup(seqnames, seqs, treestring;
     verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
     tree, _ = FUBAR_init("", treestring, exports=false, verbosity=verbosity)
-    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
+    tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     return tree, GTRmat, F3x4_freqs
 end
 

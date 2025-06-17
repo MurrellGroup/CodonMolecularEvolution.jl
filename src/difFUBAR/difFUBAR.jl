@@ -84,13 +84,13 @@ function difFUBAR_global_fit(seqnames, seqs, tree, leaf_name_transform, code; ve
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
-    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = optimize_MG94_F3x4(seqnames, seqs, tree, leaf_name_transform=leaf_name_transform, genetic_code=code)
+    tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = optimize_MG94_F3x4(seqnames, seqs, tree, leaf_name_transform=leaf_name_transform, genetic_code=code)
 
     ######
     #optionally polish branch lengths and topology
     ######
 
-    return tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs
+    return tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs
 end
 
 function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code; verbosity=1, optimize_branch_lengths=false)
@@ -113,7 +113,7 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
     end
 
     GTRmat = reversibleQ(nuc_mu, ones(4))
-    tree, alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code, verbosity=verbosity)
+    tree, LL,alpha, beta, F3x4_freqs, eq_freqs = optimize_codon_alpha_and_beta(seqnames, seqs, tree, GTRmat, leaf_name_transform=leaf_name_transform, genetic_code=code, verbosity=verbosity)
     
     rescale_branchlengths!(tree, alpha) #rescale such that the ML value of alpha is 1
 
@@ -121,12 +121,13 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
     #optionally polish branch lengths and topology
     ######
 
-    return tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs
+    return tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs
 end
 
 #foreground_grid and background_grid control the number of categories below 1.0
 function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
 
+    shallow_tree = copy_tree(tree, true)
     log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags;
         verbosity=verbosity,
         foreground_grid=foreground_grid,
@@ -140,12 +141,12 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foregr
         verbosity=verbosity,
         foreground_grid=foreground_grid,
         background_grid=background_grid
-    )
+    )..., shallow_tree # In case of future tree surgery that may prune away nodes
 end
 
-function difFUBAR_sample(con_lik_matrix, iters; verbosity=1)
+function difFUBAR_sample(con_lik_matrix, iters; burnin::Int=div(iters, 5), concentration=0.1, verbosity=1)
     verbosity > 0 && println("Step 4: Running Gibbs sampler to infer site categories.")
-    alloc_grid, theta = LDA_gibbs_track_allocation_vec(con_lik_matrix, 0.1, iters=iters)
+    alloc_grid, theta = LDA_gibbs_track_allocation_vec(con_lik_matrix, concentration, iters=iters, burnin=burnin)
     return alloc_grid, theta
 end
 
@@ -291,12 +292,15 @@ Consistent with the docs of [`difFUBAR_tabulate_and_plot`](@ref), `results_tuple
 - `tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)]`: vector of tag colors (hex format). The default option is consistent with the difFUBAR paper (Foreground 1: red, Foreground 2: blue).
 - `pos_thresh=0.95`: threshold of significance for the posteriors.
 - `iters=2500`: iterations used in the Gibbs sampler.
+- `burnin=div(iters, 5)`: burnin used in the Gibbs sampler.
+- `concentration=0.1`: concentration parameter used for the Dirichlet prior.
 - `binarize=false`: if true, the tree is binarized before the analysis.
 - `verbosity=1`: as verbosity increases, prints are added accumulatively. 
     - 0 - no prints
     - 1 - show current step and where output files are exported
     - 2 - show the chosen `difFUBAR_grid` version and amount of parallel threads.
 - `exports=true`: if true, output files are exported.
+- `exports2json=false`: if true, the results are exported to a JSON file (HyPhy format).
 - `code=MolecularEvolution.universal_code`: genetic code used for the analysis.
 - `optimize_branch_lengths=false`: if true, the branch lengths of the phylogenetic tree are optimized.
 - `version::Union{difFUBARGrid, Nothing}=nothing`: explicitly choose the version of `difFUBAR_grid` to use. If `nothing`, the version is heuristically chosen based on the available RAM and Julia threads.
@@ -305,16 +309,20 @@ Consistent with the docs of [`difFUBAR_tabulate_and_plot`](@ref), `results_tuple
 !!! note
     Julia starts up with a single thread of execution, by default. See [Starting Julia with multiple threads](https://docs.julialang.org/en/v1/manual/multi-threading/#Starting-Julia-with-multiple-threads).
 """
-function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, binarize=false, verbosity=1, exports=true, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
+function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR_TAG_COLORS[sortperm(tags)], pos_thresh=0.95, iters=2500, burnin::Int=div(iters, 5), concentration=0.1, binarize=false, verbosity=1, exports=true, exports2json=false, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
+    total_time = @elapsed begin
     analysis_name = outpath
+    leaf_name_transform = generate_tag_stripper(tags)
     plot_collection = NamedTuple[]
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize, plot_collection = plot_collection)
-    tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
-    con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _ = difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
+    ((tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs), fit_time) = @timed difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
+    ((con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _, shallow_tree), grid_time) = @timed difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
-    alloc_grid, theta = difFUBAR_sample(con_lik_matrix, iters, verbosity=verbosity)
+    ((alloc_grid, theta), sample_time) = @timed difFUBAR_sample(con_lik_matrix, iters, burnin=burnin, concentration=concentration, verbosity=verbosity)
     df, plots_named_tuple = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
-
+    # If possible, bake this into tabulate
+    end
+    json = dNdS2JSON(difFUBAR2JSON(), (outpath=analysis_name, df=df, θ=theta, posterior_mat=alloc_grid ./ sum(alloc_grid, dims=1), categories=reduce(hcat, codon_param_vec)', tags=tags, tree=shallow_tree, LL=LL, timers = (total_time, fit_time, grid_time, sample_time), treestring=treestring, seqnames=seqnames, seqs=seqs, leaf_name_transform=leaf_name_transform, pos_thresh=pos_thresh, iters=iters, burnin=burnin, concentration=concentration, binarize=binarize, exports=exports2json))
     #Return df, (tuple of partial calculations needed to re-run tablulate), plots
     push!(plot_collection, plots_named_tuple)
     return df, (alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors), merge(plot_collection...) 

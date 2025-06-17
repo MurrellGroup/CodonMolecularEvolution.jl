@@ -135,7 +135,7 @@ function benchmark_global_fit_on_dataset(benchmark_name, dir, versions, nversion
     end
     local_vars = []
     for (tree,global_fit) in zip(trees,global_fits)
-        (tree, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0, optimize_branch_lengths = optimize_branch_lengths) #60st
+        (tree, LL, my_alpha, beta, GTRmat, F3x4_freqs, eq_freqs), timed_global_fit, bytes_global_fit = @timed global_fit(seqnames, seqs, tree, generate_tag_stripper(tags), code, verbosity=0, optimize_branch_lengths = optimize_branch_lengths) #60st
 
         push!(local_vars, (tree, GTRmat, F3x4_freqs))
         push!(times_and_bytes, (timed_global_fit, bytes_global_fit))
