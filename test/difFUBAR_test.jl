@@ -1,7 +1,7 @@
 begin
     analysis_name = "nobackground/Ace2"
-    seqnames,seqs = read_fasta("data/Ace2_no_background/Ace2_tiny_test.fasta");
-    treestring, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree("data/Ace2_no_background/Ace2_no_background.nex")
+    seqnames,seqs = read_fasta("test/data/Ace2_no_background/Ace2_tiny_test.fasta");
+    treestring, tags, tag_colors = import_colored_figtree_nexus_as_tagged_tree("test/data/Ace2_no_background/Ace2_no_background.nex")
     df,results = difFUBAR(seqnames, seqs, treestring, tags, analysis_name, exports = false, verbosity = 0)
     @assert size(df) == (19, 8)
 end

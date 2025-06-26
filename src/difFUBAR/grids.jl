@@ -253,6 +253,40 @@ function gridprep(tree, tags; verbosity = 1, foreground_grid = 6, background_gri
     return log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites
 end
 
+#Initializes variables common to all grid versions of difFUBAR
+function gridprep_return_indices(tree, tags; verbosity = 1, foreground_grid = 6, background_grid = 4)
+    tr(x) = 10^x-0.05
+    trinv(x) =  log10(x+0.05)
+    alphagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr); 
+    omegagrid = gridsetup(0.01, 13.0, foreground_grid, trinv, tr)
+    background_omega_grid = gridsetup(0.05, 6.0, background_grid, trinv, tr) #Much coarser, because this isn't a target of inference
+    length(background_omega_grid) * length(alphagrid) * length(omegagrid)^2
+
+    num_groups = length(tags)
+    is_background = maximum([model_ind(n.name, tags) for n in getnodelist(tree) if !MolecularEvolution.isroot(n)]) > num_groups
+    tensor_dims = 1+num_groups+is_background;
+    
+    codon_param_vec = [[a] for a in alphagrid]
+    codon_param_index_vec = [[i] for i in 1:length(alphagrid)]
+    param_kinds = ["Alpha"]
+    for g in 1:num_groups
+        push!(param_kinds, "OmegaG$(g)")
+        codon_param_vec = add_to_each_element(codon_param_vec,omegagrid)
+        codon_param_index_vec = add_to_each_element(codon_param_index_vec, 1:length(omegagrid))
+    end
+    if is_background
+        push!(param_kinds, "OmegaBackground")
+        codon_param_vec = add_to_each_element(codon_param_vec,background_omega_grid)
+        codon_param_index_vec = add_to_each_element(codon_param_index_vec, 1:length(background_omega_grid))
+    end
+    codon_param_vec;
+    
+    num_sites = tree.parent_message[1].partition.sites
+    l = length(codon_param_vec)
+    log_con_lik_matrix = zeros(l,num_sites);
+    return log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, codon_param_index_vec
+end
+
 #Runs felsenstein! on a subgrid (an enumerated codon_param_vec chunk) and puts the results in log_con_lik_matrix. 
 #Used in the parallel version.
 function do_subgrid!(tree::FelNode, cached_model, cpv_chunk::Vector{Tuple{Int64, Vector{Float64}}}, tags::Vector{String}, GTRmat, F3x4_freqs, code, log_con_lik_matrix)
@@ -539,3 +573,4 @@ function difFUBAR_grid(version::difFUBARTreesurgeryAndParallel, tree, tags, GTRm
     BLAS.set_num_threads(BLAS_num_threads)
     return con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds
 end
+

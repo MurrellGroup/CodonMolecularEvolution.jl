@@ -128,7 +128,7 @@ end
 function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foreground_grid=6, background_grid=4, version::Union{difFUBARGrid,Nothing}=nothing, t=0)
 
     shallow_tree = copy_tree(tree, true)
-    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites = gridprep(tree, tags;
+    log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, background_omega_grid, param_kinds, is_background, num_groups, num_sites, codon_param_index_vec = gridprep_return_indices(tree, tags;
         verbosity=verbosity,
         foreground_grid=foreground_grid,
         background_grid=background_grid
@@ -141,7 +141,7 @@ function difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code; verbosity=1, foregr
         verbosity=verbosity,
         foreground_grid=foreground_grid,
         background_grid=background_grid
-    )..., shallow_tree # In case of future tree surgery that may prune away nodes
+    )..., shallow_tree, background_omega_grid, codon_param_index_vec # In case of future tree surgery that may prune away nodes
 end
 
 function difFUBAR_sample(con_lik_matrix, iters; burnin::Int=div(iters, 5), concentration=0.1, verbosity=1)
@@ -316,7 +316,7 @@ function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR
     plot_collection = NamedTuple[]
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize, plot_collection = plot_collection)
     ((tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs), fit_time) = @timed difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
-    ((con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _, shallow_tree), grid_time) = @timed difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
+    ((con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _, shallow_tree, _, _), grid_time) = @timed difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
         verbosity=verbosity, foreground_grid=6, background_grid=4, version=version, t=t)
     ((alloc_grid, theta), sample_time) = @timed difFUBAR_sample(con_lik_matrix, iters, burnin=burnin, concentration=concentration, verbosity=verbosity)
     df, plots_named_tuple = difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)

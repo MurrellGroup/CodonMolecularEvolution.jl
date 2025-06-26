@@ -1,4 +1,4 @@
-using  Distributions, MCMCChains, LinearAlgebra, Phylo, FASTX, MolecularEvolution, CodonMolecularEvolution, Phylo, EllipticalSliceSampling
+using  Distributions, MCMCChains, LinearAlgebra, Phylo, FASTX, MolecularEvolution, CodonMolecularEvolution, Phylo, EllipticalSliceSampling, AbstractMCMC, NNlib
 
 #= This struct is a bit f****d
     because it is only applicable to difFUBAR
@@ -14,8 +14,10 @@ struct SuppressionGrid
     # Indexed codon, param where 
     # 1, 2, 3, 4 mean alpha, omega_1, omega_2 and omega_BG, respectvely
     codon_param_mat::Array{Float64}
+    codon_param_index_mat::Array{Int} # Indexed codon, param index in the grids
     alpha_grid::Vector{Float64} # Vector of values of alpha 
     omega_grid::Vector{Float64} # Vector of values of omega
+    background_omega_grid::Vector{Float64} # Vector of values of background omega
     param_kinds::Vector{String} # Vector of parameter names
     suppression_kinds::Vector{String} # Vector of suppression parameter names
     transition_functions::Vector{Function} # Vector of transition functions for the suppression parameters
@@ -31,7 +33,7 @@ function probability_vector_given_parameters(grid::SuppressionGrid, parameters::
     suppression_parameters = parameters[1:num_suppression_parameters]
     probability_vector = softmax(parameters[num_suppression_parameters+1:end]) # TODO: Find out if using softmax is correct? Feels like should be expit but idkkkk
     for i = 1:num_suppression_parameters
-        probability_vector[grid.masks[i]] .*= grid.transition_functions[i](suppression_parameters[i])
+        probability_vector[grid.masks[i, :]] .*= grid.transition_functions[i](suppression_parameters[i])
     end
     return probability_vector / sum(probability_vector) # Normalization
 end
@@ -56,23 +58,25 @@ function define_ess_model(grid::SuppressionGrid, sigma_s::Float64, Sigma_0::Matr
     prior_cov_mat = [s_cov_mat zeros(Float64, (num_s, num_u_theta));
         zeros(Float64, (num_u_theta, num_s)) Sigma_0]
     prior = MvNormal(zeros(Float64, num_s + num_u_theta), prior_cov_mat)
-    log_likelihood = parameters -> log_likelihood(grid, parameters)
-    return ESSModel(prior, log_likelihood)
+    log_likelihood_one_arg = parameters -> log_likelihood(grid, parameters)
+    return ESSModel(prior, log_likelihood_one_arg)
 end
 
-function distance_grid_index(grid::SuppressionGrid, i::Int, j::Int)
+function construct_grid_index_matrix(grid::SuppressionGrid)
     """
-    Returns the distance between two grid indices i and j
+    Constructs a matrix of indices for the grid
+    TODO: Remove this and return the indices when constructing the vector of categories.
     """
-    index_space_vectors = zeros(Float64, (2, 4))
-    indices = [i, j]
-    for k = 1:2
-        index_space_vectors[k, 1] = findfirst(==(grid.codon_param_mat[indices[k], 1]), grid.alpha_grid) # Find the index of alpha
+
+    num_sites = size(grid.con_lik_matrix, 2)
+    index_matrix = zeros(Int, (num_sites, 4))
+    for i = 1:num_sites
+        index_matrix[i, 1] = findfirst(==(grid.codon_param_mat[i, 1]), grid.alpha_grid) # Find the index of alpha
         for l = 2:4
-            index_space_vectors[k, l] = findfirst(==(grid.codon_param_mat[indices[k], l]), grid.omega_grid) # Find the index of omega
+            index_matrix[i, l] = findfirst(==(grid.codon_param_mat[i, l]), grid.omega_grid) # Find the index of omega
         end
     end
-    return sum((index_space_vectors[1, :] .- index_space_vectors[2, :]).^2) # Squared Euclidean distance in index space
+    return index_matrix
 end
 
 function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
@@ -101,7 +105,7 @@ function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
             verbosity=verbosity,
             optimize_branch_lengths=optimize_branch_lengths)
 
-    ((con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _, shallow_tree), grid_time) =
+    ((con_lik_matrix, log_con_lik_matrix, codon_param_vec, alphagrid, omegagrid, param_kinds, shallow_tree, background_omega_grid, codon_param_index_vec), grid_time) =
         @timed CodonMolecularEvolution.difFUBAR_grid(tree,
             tags,
             GTRmat,
@@ -113,25 +117,30 @@ function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
             version=version,
             t=t)
 
-    log_con_lik_matrix = log.(con_lik_matrix)
     transition_functions = [s -> CodonMolecularEvolution.quintic_smooth_transition(s, 0, 1) for i = 1:4]
     # Define the masks for the suppression parameters
     masks = ones(Bool, (4, size(con_lik_matrix)[1]))
+    print(size(masks))
     codon_param_mat = reduce(hcat, codon_param_vec)'#reshape(codon_param_vec, (size(codon_param_vec, 1), 3)) # Reshape to codon, param
-
+    codon_param_index_mat = reduce(hcat, codon_param_index_vec)' # Reshape to codon, param index
 
     masks[1, :] .= codon_param_mat[:,2] .> 1 # ω_1 > 1
     masks[2, :] .= codon_param_mat[:,3] .> 1 # ω_2 > 1
     masks[3, :] .= codon_param_mat[:,2] .> codon_param_mat[:,3] # ω_1 > ω_2
     masks[4, :] .= codon_param_mat[:,3] .> codon_param_mat[:,2] # ω_1 < ω_2
-    grid = SuppressionGrid(con_lik_matrix, log_con_lik_matrix, codon_param_mat, alphagrid, omegagrid, ["α,ω_1,ω_2,ω_BG"], ["ω_1>ω_2", "ω_1<ω_2", "ω_1>1", "ω_2>1"], transition_functions, masks)
-
-    squared_distance_function = (i, j) -> distance_grid_index(grid, i, j)#sum((i .- j).^2) # Squared Euclidean distance
+    println("Masks: ", masks)
+    println(size(masks))
+    println(masks[1, :])
+    grid = SuppressionGrid(con_lik_matrix, log_con_lik_matrix, codon_param_mat, codon_param_index_mat, alphagrid, omegagrid, background_omega_grid, param_kinds, ["ω_1>ω_2", "ω_1<ω_2", "ω_1>1", "ω_2>1"], transition_functions, masks)
+    squared_distance_function = (i, j) -> sum((grid.codon_param_index_mat[i, :].- grid.codon_param_index_mat[j, :]).^2) # Squared distance function for the kernel
     c = 1.0
     kernel_function = (i, j) -> exp(-squared_distance_function(i, j) / c) # Gaussian kernel
     sigma_0 = [kernel_function(i, j) for i in 1:size(codon_param_mat, 1), j in 1:size(codon_param_mat, 1)]
     sigma_s = 0.1 # Standard deviation for the normal prior for suppression parameters
     ess_model = define_ess_model(grid, sigma_s, sigma_0)
+    # Run the ESS sampling
+    ambient_samples = AbstractMCMC.sample(ess_model, ESS(), iters,
+        progress=true)
 
     # TODO: Sample from the posterior
     # TODO: summary statistics, visualizations, save results
