@@ -3,7 +3,19 @@ using  Statistics, Distributions, MCMCChains, LinearAlgebra, Phylo, FASTX, Molec
 #= This struct is a bit f****d
     because it is only applicable to difFUBAR
     even though the suppression scheme is a lot more general...
-    I plan on fixing this later.=#
+    I plan on fixing this later.
+    
+    Maybe I should try to divide it into
+    unspecified suppression parameters
+    unspecified unsuppressed parameters
+    and then have another struct for the ESS model
+    which adds additional parameters like
+    sigma_c or Sigma_c stdev/covmat where c are the "kernel parameters"
+    sigma_s or Sigma_s stdev/covmat where s are the suppression parameters
+    and the kernel function 
+        
+    I WILL do this as soon as I have a working version of the code =#
+
 struct SuppressionGrid
     # Array of precomputed likelihood values 
     # indexed by category, site
@@ -28,60 +40,50 @@ struct SuppressionGrid
 end
 
 # It makes sense to reparametrize to logit(u_theta) the entire way...
-function probability_vector_given_parameters(grid::SuppressionGrid, parameters::Vector{Float64})
+function probability_vector_given_parameters(grid::SuppressionGrid, parameters::Vector{Float64}, sigma_s::Float64, sigma_c::Float64, kernel_function::Function, square_distance_matrix::Matrix{Int64}; epsilon::Float64=1e-6)
+    # Parameters divided into 
+    # 1. kernel parameters, 2. suppression parameters, 3. unsuppressed parameters
+    # Now only one suppression parameter c is used...
+    # sqrt(Sigma) * parameters = vcat((c, log s, "unsoftmaxed" unsuppressed parameters))
     num_suppression_parameters = size(grid.masks)[1]
-    suppression_parameters = parameters[1:num_suppression_parameters]
-    probability_vector = softmax(parameters[num_suppression_parameters+1:end]) # TODO: Find out if using softmax is correct? Feels like should be expit but idkkkk
+    num_kernel_parameters = length(parameters) - num_suppression_parameters - size(grid.log_con_lik_matrix)[1]
+    suppression_parameters = sigma_s .* parameters[num_kernel_parameters + 1:num_suppression_parameters + num_kernel_parameters]
+    unsuppressed_cov_mat = kernel_function(sigma_c * parameters[1:num_kernel_parameters], square_distance_matrix)
+    probability_vector = softmax(CodonMolecularEvolution.krylov_sqrt_times_vector(unsuppressed_cov_mat + epsilon * I, parameters[num_kernel_parameters + num_suppression_parameters+1:end]))
     for i = 1:num_suppression_parameters
         probability_vector[grid.masks[i, :]] .*= grid.transition_functions[i](suppression_parameters[i])
     end
     return probability_vector / sum(probability_vector) # Normalization
 end
 
-function log_likelihood(grid::SuppressionGrid, parameters::Vector{Float64})
+function log_likelihood(grid::SuppressionGrid, parameters::Vector{Float64}, sigma_c::Float64, sigma_s::Float64, kernel_function::Function, square_distance_matrix::Matrix{Int64}; epsilon::Float64=1e-6)
     # l(D|unsuppressed_theta, s) = ∑_i log(∑_k P(site i|C_k) P(C_k|unsuppressed_theta, s))
-    return sum(log.(grid.con_lik_matrix' * probability_vector_given_parameters(grid, parameters)))
+    return sum(log.(grid.con_lik_matrix' * probability_vector_given_parameters(grid, parameters, sigma_s, sigma_c, kernel_function, square_distance_matrix, epsilon=epsilon)))
 end
 
-
-
-function define_ess_model(grid::SuppressionGrid, sigma_s::Float64, Sigma_0::Matrix{Float64})
+function define_ess_model(grid::SuppressionGrid, num_kernel_parameters::Int64, kernel_function::Function, sigma_s::Float64, sigma_c::Float64, square_distance_matrix::Matrix{Int64})
     """
     # Arguments
     - `grid::FUBARGrid{T}`: Grid to perform inference on
     - `sigma_s::Float64`:Standard deviation for the normal prior for suppression parameters
     - `Sigma_0::Float64`:Covariance matrix for the mvnormal prior for logit unsuppressed parameters
+    TODO: Add the parameter c for the kernel function as "learnable"
     """
     num_s = size(grid.masks)[1]
     num_u_theta = size(grid.log_con_lik_matrix)[1]
-    s_cov_mat = diagm(sigma_s^2 .* ones(Float64, num_s))
+    total_dimension = num_kernel_parameters + num_s + num_u_theta
+    #= s_cov_mat = diagm(sigma_s^2 .* ones(Float64, num_s))
     prior_cov_mat = [s_cov_mat zeros(Float64, (num_s, num_u_theta));
-        zeros(Float64, (num_u_theta, num_s)) Sigma_0]
-    prior = MvNormal(zeros(Float64, num_s + num_u_theta), prior_cov_mat)
-    log_likelihood_one_arg = parameters -> log_likelihood(grid, parameters)
+        zeros(Float64, (num_u_theta, num_s)) Sigma_0] =#
+    prior = MvNormal(zeros(Float64, total_dimension), I)
+    log_likelihood_one_arg = parameters -> log_likelihood(grid, parameters, sigma_c, sigma_s, kernel_function, square_distance_matrix)
     return ESSModel(prior, log_likelihood_one_arg)
-end
-
-function construct_grid_index_matrix(grid::SuppressionGrid)
-    """
-    Constructs a matrix of indices for the grid
-    TODO: Remove this and return the indices when constructing the vector of categories.
-    """
-
-    num_sites = size(grid.con_lik_matrix, 2)
-    index_matrix = zeros(Int, (num_sites, 4))
-    for i = 1:num_sites
-        index_matrix[i, 1] = findfirst(==(grid.codon_param_mat[i, 1]), grid.alpha_grid) # Find the index of alpha
-        for l = 2:4
-            index_matrix[i, l] = findfirst(==(grid.codon_param_mat[i, l]), grid.omega_grid) # Find the index of omega
-        end
-    end
-    return index_matrix
 end
 
 function calculate_alloc_grid_and_theta(grid::SuppressionGrid, ambient_samples::Vector{Vector{Float64}}, burnin::Int=0)
     """
     Samples the allocation grid from the ambient samples
+    TODO: WHY DOES THIS TAKE SO MUCH TIME x_x
     """
     n_samples = size(ambient_samples, 1)
     n_categories = size(grid.con_lik_matrix, 1)
@@ -101,6 +103,23 @@ function calculate_alloc_grid_and_theta(grid::SuppressionGrid, ambient_samples::
         end
     end
     return alloc_grid, theta ./ (n_samples - burnin)
+end
+
+function fast_cov_mat_hedwigs_kernel(c::Vector{Float64}, square_distance_matrix::Matrix{Int64})
+    return exp(-1 / c[1]^2).^square_distance_matrix
+end
+
+function generate_square_l2_distance_matrix(codon_param_index_mat::Array{Int})
+    # Generate a distance matrix for the codon parameters
+    n = size(codon_param_index_mat, 1)
+    square_distance_matrix = zeros(Int64, n, n)
+    for i = 1:n
+        for j = 1:i
+            square_distance_matrix[i, j] = sum((codon_param_index_mat[i, :] .- codon_param_index_mat[j, :]).^2)
+            square_distance_matrix[j, i] = square_distance_matrix[i, j] # Symmetric matrix
+        end
+    end
+    return square_distance_matrix
 end
 
 function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
@@ -136,8 +155,8 @@ function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
             F3x4_freqs,
             code,
             verbosity=verbosity,
-            foreground_grid=6,
-            background_grid=4,
+            foreground_grid=4,
+            background_grid=2,
             version=version,
             t=t)
 
@@ -153,12 +172,15 @@ function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
     masks[3, :] .= codon_param_mat[:,2] .> codon_param_mat[:,3] # ω_1 > ω_2
     masks[4, :] .= codon_param_mat[:,3] .> codon_param_mat[:,2] # ω_1 < ω_2
     grid = SuppressionGrid(con_lik_matrix, log_con_lik_matrix, codon_param_mat, codon_param_index_mat, alphagrid, omegagrid, background_omega_grid, param_kinds, ["ω_1>ω_2", "ω_1<ω_2", "ω_1>1", "ω_2>1"], transition_functions, masks)
-    squared_distance_function = (i, j) -> sum((grid.codon_param_index_mat[i, :].- grid.codon_param_index_mat[j, :]).^2) # Squared distance function for the kernel
-    c = 1.0
-    kernel_function = (i, j) -> exp(-squared_distance_function(i, j) / c) # Gaussian kernel
-    sigma_0 = [kernel_function(i, j) for i in 1:size(codon_param_mat, 1), j in 1:size(codon_param_mat, 1)]
+    #squared_distance_function = (i, j) -> sum((grid.codon_param_index_mat[i, :].- grid.codon_param_index_mat[j, :]).^2) # Squared distance function for the kernel
+    #c = 1.0
+    square_distance_matrix = generate_square_l2_distance_matrix(grid.codon_param_index_mat)
+    #kernel_function = (i, j) -> exp(-squared_distance_function(i, j) / c) # Gaussian kernel
+    #sigma_0 = [kernel_function(i, j) for i in 1:size(codon_param_mat, 1), j in 1:size(codon_param_mat, 1)]
     sigma_s = 0.1 # Standard deviation for the normal prior for suppression parameters
-    ess_model = define_ess_model(grid, sigma_s, sigma_0)
+    sigma_c = 1.0 # Standard deviation for the normal prior for kernel parameter
+    square_distance_matrix = generate_square_l2_distance_matrix(grid.codon_param_index_mat)
+    ess_model = define_ess_model(grid, 1, fast_cov_mat_hedwigs_kernel, sigma_s, sigma_c, square_distance_matrix) # Define the ESS model
     # Run the ESS sampling
     sample_time = @elapsed begin
     ambient_samples = AbstractMCMC.sample(ess_model, ESS(), iters,
@@ -167,6 +189,7 @@ function skbdifFUBAR(seqnames, seqs, treestring, tags, outpath,
     end # End of sample_time
     df, plots_named_tuple = CodonMolecularEvolution.difFUBAR_tabulate_and_plot(analysis_name, pos_thresh, alloc_grid, codon_param_vec, alphagrid, omegagrid, tag_colors, verbosity=verbosity, exports=exports)
     end # End of total_time
+    # TODO: Ask Maxi why I don't get all of the plots that difFUBAR does ????????? :c
     json = CodonMolecularEvolution.dNdS2JSON(CodonMolecularEvolution.difFUBAR2JSON(), (outpath=analysis_name, df=df, θ=theta, posterior_mat=alloc_grid ./ sum(alloc_grid, dims=1), categories=reduce(hcat, codon_param_vec)', tags=tags, tree=shallow_tree, LL=LL, timers = (total_time, fit_time, grid_time, sample_time), treestring=treestring, seqnames=seqnames, seqs=seqs, leaf_name_transform=leaf_name_transform, pos_thresh=pos_thresh, iters=iters, burnin=burnin, concentration=concentration, binarize=binarize, exports=exports2json))
     push!(plot_collection, plots_named_tuple)
     return df, (alloc_grid, ambient_samples, grid, tag_colors), merge(plot_collection...)
