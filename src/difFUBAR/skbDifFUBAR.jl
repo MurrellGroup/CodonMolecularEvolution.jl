@@ -23,10 +23,10 @@ struct SuppressionGrid
     # Array of precomputed log-likelihood values 
     # indexed by category, site
     log_con_lik_matrix::Array{Float64}
-    # Indexed codon, param where 
+    # Indexed category, param where 
     # 1, 2, 3, 4 mean alpha, omega_1, omega_2 and omega_BG, respectvely
     codon_param_mat::Array{Float64}
-    codon_param_index_mat::Array{Int} # Indexed codon, param index in the grids
+    codon_param_index_mat::Array{Int} # Indexed category, param index in the grids
     alpha_grid::Vector{Float64} # Vector of values of alpha 
     omega_grid::Vector{Float64} # Vector of values of omega
     background_omega_grid::Vector{Float64} # Vector of values of background omega
@@ -53,7 +53,7 @@ function probability_vector_given_parameters(grid::SuppressionGrid, parameters::
     for i = 1:num_suppression_parameters
         probability_vector[grid.masks[i, :]] .*= grid.transition_functions[i](suppression_parameters[i])
     end
-    return probability_vector / sum(probability_vector) # Normalization
+    return probability_vector ./ sum(probability_vector) # Normalization
 end
 
 function log_likelihood(grid::SuppressionGrid, parameters::Vector{Float64}, sigma_c::Float64, sigma_s::Float64, kernel_function::Function, square_distance_matrix::Matrix{Int64}; epsilon::Float64=1e-6)
