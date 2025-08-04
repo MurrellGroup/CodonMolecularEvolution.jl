@@ -419,17 +419,16 @@ function robust_CTMC(Q; kwargs...)
     try
         return DiagonalizedCTMC(Q; kwargs...)
     catch
-        print(".")
         return GeneralCTMC(Q; kwargs...)
     end
 end
 
 #Sets up model memoization - could probably do this a bit more generally
 function MG94_cacher(code)
-    d = Dict{Any,DiagonalizedCTMC}()
+    d = Dict{Any,Union{DiagonalizedCTMC,GeneralCTMC}}()
     function cached_model(args...; genetic_code=code)
         if !haskey(d, args)
-            d[args] = DiagonalizedCTMC(MolecularEvolution.MG94_F3x4(args..., genetic_code=genetic_code))
+            d[args] = robust_CTMC(MolecularEvolution.MG94_F3x4(args..., genetic_code=genetic_code))
         end
         return d[args]
     end
