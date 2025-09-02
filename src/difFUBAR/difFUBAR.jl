@@ -97,19 +97,23 @@ function difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, c
 
     verbosity > 0 && println("Step 2: Optimizing global codon model parameters.")
 
+    onlyzerobranchlengths = all(x -> x == 0, [x.branchlength for x in getnodelist(tree)])
+    if onlyzerobranchlengths
+        if optimize_branch_lengths == true
+            @warn "All branch lengths are zero. Initiliazing all branch lengths to .1"
+            for node in getnodelist(tree)
+                node.branchlength = 0.1
+            end
+        else
+            error("Tree appears to lack branch lengths. Please provide a tree with branch lengths for likelihood calculations.")
+        end
+    end
+
     tree, nuc_mu, nuc_pi = optimize_nuc_mu(seqnames, seqs, tree, leaf_name_transform=leaf_name_transform, genetic_code=code, optimize_branch_lengths=optimize_branch_lengths)
 
     #Optionally polish branch lengths
     if optimize_branch_lengths == true
         tree_polish!(tree, GeneralCTMC(reversibleQ(nuc_mu, nuc_pi)), verbose=verbosity, topology=false)
-        #Detect if all branchlengths are zero or all branchlengths are the same
-    elseif optimize_branch_lengths == "detect"
-        branchlengths = [x.branchlength for x in getnodelist(tree)]
-        if all(x -> x == 0, branchlengths)
-            @warn "All branchlengths are zero"
-        elseif length(unique(branchlengths)) == 1
-            @warn "All branchlengths are the same"
-        end
     end
 
     GTRmat = reversibleQ(nuc_mu, ones(4))
