@@ -71,6 +71,21 @@ function difFUBAR_init(outpath_and_file_prefix, treestring, tags; tag_colors=DIF
 
     p = sortperm(tags)
     tags, tag_colors = tags[p], tag_colors[p]
+
+    verbosity > 0 && println("Tags and tag colors, if exports = true, will be exported to: " * analysis_name * "_tag_info.txt.")
+    io = exports ? open(analysis_name * "_tag_info.txt", "w") : nothing
+
+    for (i, (tag, tag_color)) in enumerate(zip(tags, tag_colors))
+        tagstring = "Group $i: $tag, Color: $tag_color"
+        verbosity > 0 && println(tagstring)
+        if exports
+            println(io, tagstring)
+        end
+    end
+
+    # Close the file if it was opened
+    exports && close(io)
+
     push!(tag_colors, "black") #ASSUMPTION: background color is always black
 
     pl = plot_tagged_phylo_tree(PlotsExtDummy(), tree, tag_colors, tags, analysis_name, exports = exports)
@@ -314,6 +329,7 @@ function difFUBAR(seqnames, seqs, treestring, tags, outpath; tag_colors=DIFFUBAR
     analysis_name = outpath
     leaf_name_transform = generate_tag_stripper(tags)
     plot_collection = NamedTuple[]
+    @assert length(tags) == 2 "difFUBAR only supports two tags, $(length(tags)) were provided"
     tree, tags, tag_colors, analysis_name = difFUBAR_init(analysis_name, treestring, tags, tag_colors=tag_colors, exports=exports, verbosity=verbosity, disable_binarize=!binarize, plot_collection = plot_collection)
     ((tree, LL, alpha, beta, GTRmat, F3x4_freqs, eq_freqs), fit_time) = @timed difFUBAR_global_fit_2steps(seqnames, seqs, tree, leaf_name_transform, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
     ((con_lik_matrix, _, codon_param_vec, alphagrid, omegagrid, _, shallow_tree), grid_time) = @timed difFUBAR_grid(tree, tags, GTRmat, F3x4_freqs, code,
