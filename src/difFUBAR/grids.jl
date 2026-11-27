@@ -65,10 +65,15 @@ end
 
 #This is the function that assigns models to branches
 #Sometimes there will be the same number of tags as omegas, but sometimes there will be one more omega.
-#Depending on whether there are any background branches (UNTESTED WITH NO BACKGROUND BRANCHES)
+#Depending on whether there are any background branches.
+#model_ind returns length(tags)+1 for any branch that matches no tag (notably the untagged root).
+#In the no-background case there is no background model, so models has only length(tags) entries;
+#clamping to length(models) maps such untagged branches onto the last (foreground) model, which is
+#the intended "the untagged root still counts as the no-background case" behavior (see gridprep).
+#This guards the BoundsError that otherwise fires on all-foreground trees (0 background branches).
 function N_Omegas_model_func(cached_model, tags,omega_vec,alpha,nuc_mat,F3x4, code)
     models = [cached_model(alpha,alpha*o,nuc_mat,F3x4, genetic_code = code) for o in omega_vec];
-    return n::FelNode -> [models[model_ind(n.name,tags)]]
+    return n::FelNode -> [models[min(model_ind(n.name,tags), length(models))]]
 end
 
 function Omega_model_func(cached_model,omega,alpha,nuc_mat,F3x4, code)
